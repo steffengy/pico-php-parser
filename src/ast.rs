@@ -8,6 +8,7 @@ pub enum Op {
     Mul,
     Div,
     Pow,
+    Mod,
     // logical
     Or,
     And,

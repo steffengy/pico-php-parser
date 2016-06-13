@@ -57,7 +57,7 @@ impl_rdp! {
         // post/prefix expr (these are not stackable e.g ($c++)++ and $c++++ does not work)
         unary_dec       =  { ["--"] }
         unary_inc       =  { ["++"] }
-        unary_p         = _{ unary_dec | unary_inc }
+        unary_p         =  { unary_dec | unary_inc }
         expr            =  { (unary_p ~ idxing_expr) | (idxing_expr ~ unary_p) | idxing_expr }
         idxing_expr     =  { (nexpr ~ (array_idx | call | property | static_property)+) | nexpr }
         // a simpler version of an expression, to prevent some infinite-recursion
@@ -79,15 +79,19 @@ impl_rdp! {
         normalstring    =  { ["\""] ~ (escape_sequence | !(["\""] | ["\\"]) ~ character)* ~ ["\""] }
         charstring      =  { ["'"] ~ (escape_sequence | !(["'"] | ["\\"]) ~ character)* ~ ["'"] }
         escape_sequence =  {
-            ["\\"] ~ (["n"] | ["r"] | ["t"] | ["\""] | ["'"] | ["\\"]) |
-            ["\\"] ~ ["\r"]? ~ ["\n"] |
+            ["\\"] ~ (
+                (["n"] | ["r"] | ["t"] | ["\""] | ["'"] | ["\\"]) |
+                (["\r"]? ~ ["\n"])
+            ) |
             decimal_escape |
             hex_escape+
         }
         decimal_escape  =  {
-            ["\\"] ~ ['0'..'2'] ~ digit ~ digit |
-            ["\\"] ~ digit ~ digit |
-            ["\\"] ~ digit
+            ["\\"] ~ (
+                ['0'..'2'] ~ digit ~ digit |
+                digit ~ digit |
+                digit
+            )
         }
         hex_escape      =  { ["\\"] ~ (["x"] | ["X"]) ~ hex_digit ~ hex_digit }
         digit           = _{ ['0'..'9'] }
@@ -253,21 +257,22 @@ impl_rdp! {
             (_: unary, _: op_not, operand: _op_expr()) => {
                 Ok(Expr::UnaryOp(Op::Not, Box::new(try!(operand))))
             },
-            // +
-            (_: add_sub, left: _op_expr(), _: op_add, right: _op_expr()) => {
-                Ok(Expr::BinaryOp(Op::Add, Box::new(try!(left)), Box::new(try!(right))))
+            // + -
+            (_: add_sub, left: _op_expr(), sign, right: _op_expr()) => {
+                Ok(Expr::BinaryOp(match sign.rule {
+                    Rule::op_add => Op::Add,
+                    Rule::op_sub => Op::Sub,
+                    _ => unreachable!()
+                }, Box::new(try!(left)), Box::new(try!(right))))
             },
-            // -
-            (_: add_sub, left: _op_expr(), _: op_sub, right: _op_expr()) => {
-                Ok(Expr::BinaryOp(Op::Sub, Box::new(try!(left)), Box::new(try!(right))))
-            },
-            // *
-            (_: mul_div_mod, left: _op_expr(), _: op_mul, right: _op_expr()) => {
-                Ok(Expr::BinaryOp(Op::Mul, Box::new(try!(left)), Box::new(try!(right))))
-            },
-            // /
-            (_: mul_div_mod, left: _op_expr(), _: op_div, right: _op_expr()) => {
-                Ok(Expr::BinaryOp(Op::Div, Box::new(try!(left)), Box::new(try!(right))))
+            // * / %
+            (_: mul_div_mod, left: _op_expr(), sign, right: _op_expr()) => {
+                Ok(Expr::BinaryOp(match sign.rule {
+                    Rule::op_mul => Op::Mul,
+                    Rule::op_div => Op::Div,
+                    Rule::op_mod => Op::Mod,
+                    _ => unreachable!()
+                }, Box::new(try!(left)), Box::new(try!(right))))
             },
             // **
             (_: power, left: _op_expr(), _: op_power, right: _op_expr()) => {
@@ -287,15 +292,24 @@ impl_rdp! {
 
         // parse an expression, which may be preceded/followed by pre/post unary operators (2. highest-priority)
         _expr(&self) -> Result<Expr<'n>, ParseError> {
-            //--e
-            (_: expr, _: unary_dec, e: _idxing_expr()) => Ok(Expr::UnaryOp(Op::PreDec, Box::new(try!(e)))),
-            //++e
-            (_: expr, _: unary_inc, e: _idxing_expr()) => Ok(Expr::UnaryOp(Op::PreInc, Box::new(try!(e)))),
-            //e--
-            (_: expr, e: _idxing_expr(), _: unary_dec) => Ok(Expr::UnaryOp(Op::PostDec, Box::new(try!(e)))),
-            //e++
-            (_: expr, e: _idxing_expr(), _: unary_inc) => Ok(Expr::UnaryOp(Op::PostInc, Box::new(try!(e)))),
-            (_: expr, e: _idxing_expr()) => e,
+            //--e ++e
+            (_: expr, _: unary_p, sign, e: _idxing_expr()) => {
+                Ok(Expr::UnaryOp(match sign.rule {
+                    Rule::unary_dec => Op::PreDec,
+                    Rule::unary_inc => Op::PreInc,
+                    _ => unreachable!()
+                }, Box::new(try!(e))))
+            },
+            //e-- e++
+            (_: expr, e: _idxing_expr(), _: unary_p, sign) => {
+                Ok(Expr::UnaryOp(match sign.rule {
+                    Rule::unary_dec => Op::PostDec,
+                    Rule::unary_inc => Op::PostInc,
+                    _ => unreachable!()
+                }, Box::new(try!(e))))
+            },
+            //e
+            (_: expr, e: _idxing_expr()) => e
         }
 
         // parse an expression, which may be followed by "indexing" (array, call, obj, static obj, ...)
