@@ -1,0 +1,8 @@
+[package]
+name = "pesty-php"
+version = "0.1.0"
+authors = ["Steffen <steffen.butzer@outlook.com>"]
+license = "MIT"
+
+[dependencies]
+pest="0.2"
