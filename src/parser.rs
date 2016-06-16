@@ -28,7 +28,6 @@ enum IdxExpr<'a> {
     ArrayIdx(Expr<'a>),
     Call(Vec<Expr<'a>>),
     ObjProperty(Expr<'a>),
-    ObjPropertyBraced(Expr<'a>),
     StaticProperty(Expr<'a>),
 }
 
@@ -188,12 +187,11 @@ impl_rdp! {
         argument_expression_list        = _{ (argument_expression ~ ([","] ~ argument_expression)*) | argument_expression }
         argument_expression             =  { variadic_unpacking | assignment_expression }
         variadic_unpacking              =  { ["..."] ~ assignment_expression }
-        member_selection                =  { ["->"] ~ member_selection_designator ~ member_selection_terminating }
-        // This is an awesome nice PEST trick (inject a fake-token)
-        member_selection_terminating    =  { [""] }
-        member_selection_designator     = _{ braced_expression | name | expression }
-        braced_expression               =  { ["{"] ~ expression ~ braced_expression_end }
-        braced_expression_end           =  { ["}"] }
+        member_selection                =  { ["->"] ~ member_selection_designator }
+        //TODO: use var_name_creation_expression insteadof variable_name?
+        member_selection_designator     = _{ curly_braced_expression | variable_name | name }
+        curly_braced_expression         =  { ["{"] ~ expression ~ curly_braced_expression_end }
+        curly_braced_expression_end     =  { ["}"] }
         postfix_increment_expression    =  { unary_expression ~ ["++"] }
         postfix_decrement_expression    =  { unary_expression ~ ["--"] }
         scope_resolution_expression     =  { scope_resolution_qualifier ~ ["::"] ~ (member_selection_designator | ["class"]) }
@@ -215,6 +213,7 @@ impl_rdp! {
             ["array"] | ["binary"] | ["bool"] | ["boolean"] | ["double"] | ["int"] | ["integer"] | ["float"] | ["object"] | ["real"] |
             ["string"] | ["unset"]
         }
+        // TODO: this shouldn't be ["$"] ~ expression (expression is too much for 1st subrule)
         var_name_creation_expression    =  { (["$"] ~ expression) | (["$"] ~ ["{"] ~ expression ~ ["}"]) }
 
         // Section: instanceof Operator
@@ -601,24 +600,8 @@ impl_rdp! {
                         (a, IdxExpr::ArrayIdx(idx)) => {
                             Expr::ArrayIdx(Box::new(a), vec![idx])
                         },
-                        (a, IdxExpr::ObjPropertyBraced(objp)) => {
-                            Expr::ObjProperty(Box::new(a), vec![objp])
-                        },
                         (a, IdxExpr::ObjProperty(objp)) => {
-                            // This is a bit ugly, but required since we don't seem to be able to prevent
-                            // recursive parsing for these kinds of expressions (todo: low-priority)
-                            // so we basically have to reduce a recursive-structure into a linear one,
-                            // which anyways works for these kinds of expressions (since they can not be nested "inside" eachother
-                            // as arrays e.g $test[$a[$test]],
-                            // without using another expression-type (compound-statements e.g. $test->{$test->a})
-                            let mut elems = vec![];
-                            if let Expr::ObjProperty(e2, elems2) = objp {
-                                elems.push(*e2);
-                                elems.extend(elems2);
-                            } else {
-                                elems.push(objp);
-                            }
-                            Expr::ObjProperty(Box::new(a), elems)
+                            Expr::ObjProperty(Box::new(a), vec![objp])
                         },
                         (a, IdxExpr::StaticProperty(stp)) => {
                             Expr::StaticProperty(Box::new(a), vec![stp])
@@ -643,17 +626,17 @@ impl_rdp! {
                 next.push_front(IdxExpr::Call(try!(args).into_iter().collect()));
                 Ok(next)
             },
-            (_: member_selection, &name: name, _: member_selection_terminating, next: _post_exprs()) => {
+            (_: member_selection, _: variable_name, &name: name, next: _post_exprs()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExpr::ObjProperty(Expr::Variable(name.into())));
+                Ok(next)
+            },
+            (_: member_selection, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
                 next.push_front(IdxExpr::ObjProperty(Expr::Identifier(name.into())));
                 Ok(next)
             },
-            (_: member_selection, _: braced_expression, _: expression, e: _expression(), _: braced_expression_end, _: member_selection_terminating, next: _post_exprs()) => {
-                let mut next = try!(next);
-                next.push_front(IdxExpr::ObjPropertyBraced(try!(e)));
-                Ok(next)
-            },
-            (_: member_selection, _: expression, e: _expression(), _: member_selection_terminating, next: _post_exprs()) => {
+            (_: member_selection, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
                 let mut next = try!(next);
                 next.push_front(IdxExpr::ObjProperty(try!(e)));
                 Ok(next)
