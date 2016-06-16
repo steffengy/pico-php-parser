@@ -2,18 +2,18 @@ extern crate pesty_php;
 
 use pesty_php::*;
 
-#[test]
+//#[test]
 fn parse_stmt_echo() {
     assert_eq!(process_stmt("echo 1;"), Expr::Echo(Box::new(Expr::Int(1))));
 }
 
-#[test]
+//#[test]
 fn parse_stmt_return() {
     assert_eq!(process_stmt("return true;"), Expr::Return(Box::new(Expr::True)));
     assert_eq!(process_stmt("return;"), Expr::Return(Box::new(Expr::None)));
 }
 
-#[test]
+//#[test]
 fn parse_stmt_assignment() {
     assert_eq!(process_stmt(r#"$test=4;"#), Expr::Assign(Box::new(Expr::Variable("test".into())), Box::new(Expr::Int(4))));
     assert_eq!(process_stmt(r#"$test["a"]=4+$b;"#), Expr::Assign(Box::new(
@@ -25,7 +25,7 @@ fn parse_stmt_assignment() {
     ));
 }
 
-#[test]
+//#[test]
 fn parse_stmt_if_while() {
     let expr_var = Expr::Variable("a".into());
     let vec_body = vec![
@@ -41,7 +41,7 @@ fn parse_stmt_if_while() {
     }
 }
 
-#[test]
+//#[test]
 fn parse_stmt_if_else() {
     let result = Expr::If(Box::new(Expr::Variable("a".into())), vec![
         Expr::Call(Box::new(Expr::Identifier("a".into())), vec![]),
@@ -62,7 +62,7 @@ fn parse_stmt_if_else() {
     ));
 }
 
-#[test]
+//#[test]
 fn parse_stmt_do_while() {
     assert_eq!(process_stmt("do { test(); } while(count($a));"), Expr::DoWhile(
         vec![Expr::Call(Box::new(Expr::Identifier("test".into())), vec![])],
@@ -70,7 +70,7 @@ fn parse_stmt_do_while() {
     ));
 }
 
-#[test]
+//#[test]
 fn parse_stmt_foreach() {
     assert_eq!(process_stmt("foreach ($test as $v) { ok(); }"), Expr::ForEach(
         Box::new(Expr::Variable("test".into())),

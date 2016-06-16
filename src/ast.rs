@@ -35,6 +35,7 @@ pub enum Expr<'a> {
     False,
     Null,
     Identifier(Cow<'a, str>),
+    NsIdentifier(Vec<Cow<'a, str>>),
     String(String),
     Int(i64),
     Variable(Cow<'a, str>),
