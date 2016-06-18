@@ -10,3 +10,6 @@ pub use ast::*;
 
 mod parser;
 pub use parser::*;
+
+mod printer;
+pub use printer::*;
