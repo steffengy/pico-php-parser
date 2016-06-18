@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use super::{Expr, Op, Decl, FunctionDecl};
+use ast::{ParsedItem, Expr, Op, Decl, ClassDecl, FunctionDecl, ParamDefinition, UseClause, Path};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -48,6 +48,13 @@ impl_rdp! {
         nondigit_silent                 = _{ ["_"] | ['a'..'z'] | ['A'..'Z'] }
         sign                            =  { ["+"] | ["-"] }
         new_line                        =  { (["\r"] ~ ["\n"]) | ["\r"] | ["\n"] }
+
+        // Section: Program Structure
+        script                          =  { script_section+ }
+        start_tag                       = _{ ["<?php"] | ["<?="] }
+        end_tag                         = _{ ["?>"] }
+        script_section                  =  { text? ~ start_tag ~ statement_list? ~ end_tag ~ text? }
+        text                            =  { (!start_tag ~ any)+ }
 
         // Section: Names
         variable_name                   = { ["$"] ~ name }
@@ -163,8 +170,7 @@ impl_rdp! {
 
         //Section: Postfix Operators
         postfix_expression_internal     = _{
-            primary_expression | clone_expression | object_creation_expression | array_creation_expression
-            /*| function_call_expression | postfix_increment_expression | postfix_decrement_expression*/
+            clone_expression | object_creation_expression | array_creation_expression | primary_expression
             /*TODO: | scope_resolution_expression */
         }
         // for PEST modified postfix_expression, which handles subscript and member selection
@@ -176,15 +182,15 @@ impl_rdp! {
         increment_or_decrement_op       =  { op_increment | op_decrement }
         clone_expression                =  { ["clone"] ~ expression }
         object_creation_expression      =  {
-            ( ["new"] ~ class_type_designator ~ ["("] ~ argument_expression_list? ~ [")"] ) |
+            ( ["new"] ~ class_type_designator ~ ["("] ~ (!function_call_end ~ argument_expression_list)? ~ function_call_end ) |
             ( ["new"] ~ ["class"] ~ ["("] ~ argument_expression_list? ~ [")"] ~ class_base_clause? ~ class_interface_clause? ~ (["{"] ~ ["}"])? ) | //TODO: weird?
             ( ["new"] ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? ~ ["}"] )
         }
-        class_type_designator           =  { qualified_name | expression }
-        array_creation_expression       =  { (["array"] ~ ["("] ~ array_initializer? ~ [")"]) ~ (["["] ~ array_initializer? ~ ["]"]) }
-        array_initializer               =  { array_initializer_list ~ [","]? }
-        array_initializer_list          =  { array_element_initializer | (array_element_initializer ~ [","] ~ array_initializer) }
-        array_element_initializer       =  { (["&"] ~ element_value) | (element_key ~ ["=>"] ~ ["&"]? ~ element_value) }
+        class_type_designator           = _{ qualified_name | expression }
+        array_creation_expression       =  { (["array"] ~ ["("] ~ array_initializer? ~ [")"]) | (["["] ~ array_initializer? ~ ["]"]) }
+        array_initializer               = _{ array_initializer_list ~ [","]? }
+        array_initializer_list          = _{ array_element_initializer ~  ([","] ~ array_element_initializer)* }
+        array_element_initializer       =  { (["&"]? ~ element_value) | (element_key ~ ["=>"] ~ ["&"]? ~ element_value) }
         element_key                     =  { expression }
         element_value                   =  { expression }
         subscript                       =  { ["["] ~ expression? ~ subscript_end }
@@ -192,7 +198,7 @@ impl_rdp! {
         function_call_expression        =  { qualified_name ~ function_call }
         function_call                   =  { ["("] ~ (![")"] ~ argument_expression_list)? ~ function_call_end }
         function_call_end               =  { [")"] }
-        argument_expression_list        = _{ (argument_expression ~ ([","] ~ argument_expression)*) | argument_expression }
+        argument_expression_list        = _{ (argument_expression ~ ([","] ~ argument_expression)*) }
         argument_expression             =  { variadic_unpacking | assignment_expression }
         variadic_unpacking              =  { ["..."] ~ assignment_expression }
         member_selection                =  { ["->"] ~ member_selection_designator }
@@ -430,7 +436,7 @@ impl_rdp! {
         function_definition             =  { function_definition_header ~ compound_statement }
         function_definition_header      =  { ["function"] ~ ["&"]? ~ name ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end ~ return_type? }
         function_definition_param_end   =  { [")"] }
-        parameter_expression            =  { parameter_declaration | variadic_parameter }
+        parameter_expression            = _{ parameter_declaration | variadic_parameter }
         parameter_declaration_list      = _{ parameter_expression ~ ([","] ~ parameter_expression)* }
         parameter_declaration           =  { type_declaration? ~ ["&"]? ~ variable_name ~ default_argument_specifier? }
         variadic_parameter              =  { type_declaration? ~ ["&"]? ~ ["..."] ~ variable_name }
@@ -440,11 +446,11 @@ impl_rdp! {
         default_argument_specifier      =  { ["="] ~ constant_expression }
 
         // Section: Classes
-        class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? }
+        class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ (!["}"] ~ class_member_declarations)? ~ ["}"] }
         class_modifier                  =  { ["abstract"] | ["final"] }
         class_base_clause               =  { ["extends"] ~ qualified_name }
-        class_interface_clause          =  { (["implements"] ~ qualified_name) | (class_interface_clause ~ [","] ~ qualified_name) }
-        class_member_declarations       =  { class_member_declaration | (class_member_declarations ~ class_member_declaration) }
+        class_interface_clause          =  { ["implements"] ~ qualified_name ~ ([","] ~ qualified_name)* }
+        class_member_declarations       = _{ class_member_declaration* }
         class_member_declaration        =  { const_declaration | property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
         const_declaration               =  { ["const"] ~ name ~ ["="] ~ constant_expression ~ [";"] }
         property_declaration            =  { property_modifier ~ variable_name ~ property_initializer? ~ [";"] }
@@ -485,8 +491,8 @@ impl_rdp! {
         // Section: Namespaces
         namespace_definition            =  {
             ["namespace"] ~ (
-                (name ~ [";"]) |
-                (name? ~ compound_statement)
+                (namespace_name ~ [";"]) |
+                (namespace_name? ~ compound_statement)
             )
         }
         namespace_use_declaration       =  {
@@ -495,13 +501,13 @@ impl_rdp! {
             (["{"] ~ namespace_use_group_clauses_1 ~ ["}"]) |
             (["use"] ~ ["\\"]? ~ namespace_name ~ ["\\"] ~ ["{"] ~ namespace_use_group_clauses_2 ~ ["}"] ~ [";"])
         }
-        namespace_use_clauses           =  { namespace_use_clause | (namespace_use_clauses ~ [","] ~ namespace_use_clause) }
+        namespace_use_clauses           = _{ namespace_use_clause ~ ([","] ~ namespace_use_clause)* }
         namespace_use_clause            =  { qualified_name ~ namespace_aliasing_clause? }
         namespace_aliasing_clause       =  { ["as"] ~ name }
         namespace_function_or_const     =  { ["function"] | ["const"] }
-        namespace_use_group_clauses_1   =  { namespace_use_group_clause_1 | (namespace_use_group_clauses_1 ~ [","] ~ namespace_use_group_clause_1) }
+        namespace_use_group_clauses_1   =  { namespace_use_group_clause_1 ~ ([","] ~ namespace_use_group_clause_1)* }
         namespace_use_group_clause_1    =  { namespace_name ~ namespace_aliasing_clause? }
-        namespace_use_group_clauses_2   =  { namespace_use_group_clause_2 | (namespace_use_group_clauses_2 ~ [","] ~ namespace_use_group_clause_2) }
+        namespace_use_group_clauses_2   =  { namespace_use_group_clause_2 ~ ([","] ~ namespace_use_group_clause_2)* }
         namespace_use_group_clause_2    =  { namespace_function_or_const? ~ namespace_name ~ namespace_aliasing_clause? }
 
         comment = _{
@@ -513,9 +519,29 @@ impl_rdp! {
     }
 
     process! {
-        // TODO: temporary during rewrite
-        main(&self) -> Result<Expr<'n>, ParseError> {
-            () => Ok(Expr::None)
+        main(&self) -> Result<Vec<ParsedItem<'n>>, ParseError> {
+            (_: script, pfile: _script_sections()) => Ok(try!(pfile).into_iter().collect())
+        }
+
+        _script_sections(&self) -> Result<LinkedList<ParsedItem<'n>>, ParseError> {
+            (_: script_section, t: _optional_text(), stmts: _multiple_statements(), t2: _optional_text(), next: _script_sections()) => {
+                let mut next = try!(next);
+                if let Some(text) = try!(t2) {
+                    next.push_front(ParsedItem::Text(text.into()));
+                }
+                next.push_front(ParsedItem::CodeBlock(try!(stmts).into_iter().collect()));
+                if let Some(text) = try!(t) {
+                    next.push_front(ParsedItem::Text(text.into()));
+                }
+
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _optional_text(&self) -> Result<Option<&'n str>, ParseError> {
+            (&t: text) => Ok(Some(t)),
+            () => Ok(None),
         }
 
         _expression(&self) -> Result<Expr<'n>, ParseError> {
@@ -586,6 +612,26 @@ impl_rdp! {
 
         _postfix_expression_internal(&self) -> Result<Expr<'n>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
+            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), args: _call_args(), _: function_call_end) => {
+                Ok(Expr::New(qualified_name_to_path(try!(qn)), try!(args).into_iter().collect()))
+            },
+            (_: array_creation_expression, values: _array_element_initializers()) => {
+                Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
+            }
+        }
+
+        _array_element_initializers(&self) -> Result<LinkedList<(Expr<'n>, Expr<'n>)>, ParseError> {
+            (_: array_element_initializer, kv: _array_element_key_value(), next: _array_element_initializers()) => {
+                let mut next = try!(next);
+                next.push_front(try!(kv));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _array_element_key_value(&self) -> Result<(Expr<'n>, Expr<'n>), ParseError> {
+            (_: element_key, k: _expression(), _: element_value, v: _expression()) => Ok((try!(k), try!(v))),
+            (_: element_value, v: _expression()) => Ok((Expr::None, try!(v))),
         }
 
         _postfix_expression(&self) -> Result<Expr<'n>, ParseError> {
@@ -699,16 +745,16 @@ impl_rdp! {
             (_: intrinsic, i: _intrinsic()) => i,
             (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements()) => {
                 Ok(Expr::Function(FunctionDecl {
-                    params: vec![], //TODO
+                    params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
                 }))
             },
-            (_: qualified_name, e: _qualified_name()) => {
-                let mut e = try!(e);
-                Ok(if e.len() > 1 {
-                    Expr::NsIdentifier(e)
+            (_: qualified_name, qn: _qualified_name()) => {
+                let mut qn = try!(qn);
+                Ok(if qn.len() > 1 {
+                    Expr::NsIdentifier(qn)
                 } else {
-                    Expr::Identifier(e.pop().unwrap())
+                    Expr::Identifier(qn.pop().unwrap())
                 })
             },
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
@@ -751,7 +797,46 @@ impl_rdp! {
             (_: selection_statement, st: _selection_statement()) => st,
             (_: iteration_statement, st: _iteration_statement()) => st,
             (_: compound_statement, st: _multiple_statements()) => Ok(Expr::Block(try!(st).into_iter().collect())),
+            (_: function_definition, _: function_definition_header, &name: name, params: _function_definition_params(),
+                _: function_definition_param_end, _: compound_statement, body: _multiple_statements()) => {
+                Ok(Expr::Decl(Decl::GlobalFunction(name.into(), FunctionDecl {
+                    params: try!(params).into_iter().collect(),
+                    body: try!(body).into_iter().collect(),
+                })))
+            },
+            (_: class_declaration, &name: name, extends: _class_extends()) => {
+                let extends = try!(extends);
+                let base_clause = if extends.is_empty() {
+                    None
+                } else {
+                    Some(qualified_name_to_path(extends))
+                };
+                Ok(Expr::Decl(Decl::Class(ClassDecl {
+                    name: name.into(),
+                    base_class: base_clause,
+                })))
+            },
+            (_: namespace_definition, _: namespace_name, nsi: _namespace_name_item()) => {
+                Ok(Expr::Decl(Decl::Namespace(try!(nsi).into_iter().collect())))
+            },
+            (_: namespace_use_declaration, clauses: _namespace_use_clauses()) => {
+                Ok(Expr::Use(try!(clauses).into_iter().collect()))
+            },
             (_: statement, st: _statement()) => st,
+        }
+
+        _class_extends(&self) -> Result<Vec<Cow<'n, str>>, ParseError> {
+            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(try!(qn).into_iter().collect()),
+            () => Ok(vec![]),
+        }
+
+        _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'n>>, ParseError> {
+            (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), next: _namespace_use_clauses()) => {
+                let mut next = try!(next);
+                next.push_front(UseClause::QualifiedName(try!(qn)));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
         }
 
         _jump_statement(&self) -> Result<Expr<'n>, ParseError> {
@@ -768,13 +853,13 @@ impl_rdp! {
             },
             (_: foreach_statement, _: expression, e: _expression(), kv: _foreach_key_value(), st: _statement()) => {
                 let kv = try!(kv);
-                Ok(Expr::ForEach(Box::new(try!(e)), kv.0.map(|x| Box::new(x)), kv.1.map(|x| Box::new(x)), Box::new(try!(st))))
+                Ok(Expr::ForEach(Box::new(try!(e)), Box::new(kv.0), Box::new(kv.1), Box::new(try!(st))))
             }
         }
 
-        _foreach_key_value(&self) -> Result<(Option<Expr<'n>>, Option<Expr<'n>>), ParseError> {
-            (_: foreach_key, k: _expression(), _: foreach_value, v: _expression()) => Ok((Some(try!(k)), Some(try!(v)))),
-            (_: foreach_value, v: _expression()) => Ok((None, Some(try!(v)))),
+        _foreach_key_value(&self) -> Result<(Expr<'n>, Expr<'n>), ParseError> {
+            (_: foreach_key, k: _expression(), _: foreach_value, v: _expression()) => Ok((try!(k), try!(v))),
+            (_: foreach_value, v: _expression()) => Ok((Expr::None, try!(v))),
         }
 
         _selection_statement(&self) -> Result<Expr<'n>, ParseError> {
@@ -783,16 +868,21 @@ impl_rdp! {
 
         _if_statement(&self) -> Result<Expr<'n>, ParseError> {
             (exp: _expression(), _: statement, st: _statement(), elsec: _else_clause()) => {
-                Ok(Expr::If(Box::new(try!(exp)), Box::new(try!(st)), try!(elsec).map(|x| Box::new(x))))
+                Ok(Expr::If(Box::new(try!(exp)), Box::new(try!(st)), Box::new(try!(elsec))))
             }
         }
 
-        _else_clause(&self) -> Result<Option<Expr<'n>>, ParseError> {
-            (_: else_clause_1, st: _statement()) => Ok(Some(try!(st))),
-            () => Ok(None),
+        _else_clause(&self) -> Result<Expr<'n>, ParseError> {
+            (_: else_clause_1, st: _statement()) => Ok(try!(st)),
+            () => Ok(Expr::None),
         }
 
-        _function_definition_params(&self) -> Result<LinkedList<()>, ParseError> {
+        _function_definition_params(&self) -> Result<LinkedList<ParamDefinition<'n>>, ParseError> {
+            (_: parameter_declaration, _: variable_name, &name: name, next: _function_definition_params()) => {
+                let mut next = try!(next);
+                next.push_front(ParamDefinition { name: name.into() });
+                Ok(next)
+            },
             () => Ok(LinkedList::new())
         }
 
@@ -897,8 +987,24 @@ impl_rdp! {
     }
 }
 
+fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
+    let class_fragment = args.pop().unwrap();
+    if args.len() > 0 {
+        let namespace = args.join("\\");
+        Path::NamespacedClass(namespace.into(), class_fragment.into())
+    } else {
+        Path::Class(class_fragment.into())
+    }
+}
 
 // HELPERS; TODO: move to tests files when visibility is added for these macros
+pub fn process_script(input: &str) -> Vec<ParsedItem> {
+    let mut parser = Rdp::new(StringInput::new(input));
+    assert!(parser.script());
+    println!("{:?} @{}", parser.queue(), parser.pos());
+    assert!(parser.end());
+    parser.process().unwrap()
+}
 
 pub fn process_stmt(input: &str) -> Expr {
     let mut parser = Rdp::new(StringInput::new(input));

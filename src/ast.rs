@@ -1,6 +1,27 @@
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ParsedItem<'a> {
+    Text(Cow<'a, str>),
+    CodeBlock(Vec<Expr<'a>>),
+}
+
+//TODO: maybe use Path for this too?
+#[derive(Clone, Debug, PartialEq)]
+pub enum UseClause<'a> {
+    QualifiedName(Vec<Cow<'a, str>>),
+}
+
+//TODO: use this in more places instead of Vec<Cow<..>>
+#[derive(Clone, Debug, PartialEq)]
+pub enum Path<'a> {
+    Class(Cow<'a, str>),
+    /// fragment.1 = The namespace
+    /// fragment.2 = The class
+    NamespacedClass(Cow<'a, str>, Cow<'a, str>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     // arith
     Add,
@@ -38,8 +59,10 @@ pub enum Expr<'a> {
     NsIdentifier(Vec<Cow<'a, str>>),
     String(String),
     Int(i64),
+    Array(Vec<(Box<Expr<'a>>, Box<Expr<'a>>)>),
     Variable(Cow<'a, str>),
     Block(Vec<Expr<'a>>),
+    Use(Vec<UseClause<'a>>),
     Echo(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
 
@@ -47,27 +70,44 @@ pub enum Expr<'a> {
     ObjProperty(Box<Expr<'a>>, Vec<Expr<'a>>),
     StaticProperty(Box<Expr<'a>>, Vec<Expr<'a>>),
     Call(Box<Expr<'a>>, Vec<Expr<'a>>),
+    New(Path<'a>, Vec<Expr<'a>>),
     UnaryOp(Op, Box<Expr<'a>>),
     BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
     Function(FunctionDecl<'a>),
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     /// If (condition.0) { Block.1 } else Else_Expr.2
-    If(Box<Expr<'a>>, Box<Expr<'a>>, Option<Box<Expr<'a>>>),
+    If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     While(Box<Expr<'a>>, Box<Expr<'a>>),
     DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
-    ForEach(Box<Expr<'a>>, Option<Box<Expr<'a>>>, Option<Box<Expr<'a>>>, Box<Expr<'a>>),
+    ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
+
+    // These are not actual expressions, but will be stored as such before filtered out
+    Decl(Decl<'a>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParamDefinition<'a> {
+    pub name: Cow<'a, str>
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDecl<'a> {
-    pub params: Vec<Expr<'a>>,
+    pub params: Vec<ParamDefinition<'a>>,
     pub body: Vec<Expr<'a>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClassDecl<'a> {
+    pub name: Cow<'a, str>,
+    pub base_class: Option<Path<'a>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl<'a> {
     /// A set of statements
     Block(Vec<Expr<'a>>),
-    GlobalFunction(Cow<'a, str>, FunctionDecl<'a>)
+    Namespace(Vec<Cow<'a, str>>),
+    GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
+    Class(ClassDecl<'a>),
 }

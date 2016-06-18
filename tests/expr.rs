@@ -121,7 +121,7 @@ fn parse_expr_comment() {
 }
 
 #[test]
-fn parse_post_pre_dec_inc() {
+fn parse_expr_post_pre_dec_inc() {
     assert_eq!(process_expr("$c++"), Expr::UnaryOp(Op::PostInc, Box::new(Expr::Variable("c".into()))));
     assert_eq!(process_expr("$c--"), Expr::UnaryOp(Op::PostDec, Box::new(Expr::Variable("c".into()))));
     assert_eq!(process_expr("++$c"), Expr::UnaryOp(Op::PreInc, Box::new(Expr::Variable("c".into()))));
@@ -129,7 +129,7 @@ fn parse_post_pre_dec_inc() {
 }
 
 #[test]
-fn parse_closure() {
+fn parse_expr_closure() {
     assert_eq!(process_expr("function () { c(); }"), Expr::Function(FunctionDecl {
         params: vec![],
         body: vec![Expr::Call(Box::new(Expr::Identifier("c".into())), vec![])]
@@ -142,4 +142,26 @@ fn parse_ns_identifier() {
     assert_eq!(process_expr("Test\\Abc"), Expr::NsIdentifier(vec!["Test".into(), "Abc".into()]));
     assert_eq!(process_expr("Test\\Ns1\\Ns2"), Expr::NsIdentifier(vec!["Test".into(), "Ns1".into(), "Ns2".into()]));
     assert_eq!(process_expr("\\Test\\Ns1\\Ns2\\Ns3"), Expr::NsIdentifier(vec!["Test".into(), "Ns1".into(), "Ns2".into(),"Ns3".into()]));
+}
+
+#[test]
+fn parse_expr_new() {
+    assert_eq!(process_expr("new TestA()"), Expr::New(Path::Class("TestA".into()), vec![]));
+    assert_eq!(process_expr("new Foo\\Bar()"), Expr::New(Path::NamespacedClass("Foo".into(), "Bar".into()), vec![]));
+}
+
+#[test]
+fn parse_expr_array() {
+    assert_eq!(process_expr("[]"), Expr::Array(vec![]));
+    assert_eq!(process_expr("array()"), Expr::Array(vec![]));
+    assert_eq!(process_expr("[1, 2]"), Expr::Array(vec![box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Int(2))]));
+    assert_eq!(process_expr("[1, [2, 3], 3]"), Expr::Array(vec![
+        box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Array(vec![
+            box_array_elem(Expr::None, Expr::Int(2)), box_array_elem(Expr::None, Expr::Int(3)), box_array_elem(Expr::None, Expr::Int(3))
+        ])
+    )]));
+}
+
+fn box_array_elem<'a>(a: Expr<'a>, b: Expr<'a>) -> (Box<Expr<'a>>, Box<Expr<'a>>) {
+    (Box::new(a), Box::new(b))
 }

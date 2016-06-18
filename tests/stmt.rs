@@ -31,14 +31,14 @@ fn parse_stmt_if_while() {
     let block_stmt = Expr::Call(Box::new(Expr::Identifier("b".into())), vec![]);
     let block_expr = Expr::Block(vec![block_stmt.clone()]);
     let args = [
-        ("if", Expr::If(Box::new(expr_var.clone()), Box::new(block_expr.clone()), None)),
+        ("if", Expr::If(Box::new(expr_var.clone()), Box::new(block_expr.clone()), Box::new(Expr::None))),
         ("while", Expr::While(Box::new(expr_var.clone()), Box::new(block_expr)))
     ];
     for arg in &args {
         assert_eq!(process_stmt(&(arg.0.to_owned() + r#" ($a) { b(); }"#)), arg.1);
     }
     let args = [
-        ("if", Expr::If(Box::new(expr_var.clone()), Box::new(block_stmt.clone()), None)),
+        ("if", Expr::If(Box::new(expr_var.clone()), Box::new(block_stmt.clone()), Box::new(Expr::None))),
         ("while", Expr::While(Box::new(expr_var.clone()), Box::new(block_stmt)))
     ];
     for arg in &args {
@@ -48,7 +48,7 @@ fn parse_stmt_if_while() {
 
 #[test]
 fn parse_stmt_if_else() {
-    let make_result = |block_expr, else_expr| Expr::If(Box::new(Expr::Variable("a".into())), Box::new(block_expr), Some(Box::new(else_expr)));
+    let make_result = |block_expr, else_expr| Expr::If(Box::new(Expr::Variable("a".into())), Box::new(block_expr), Box::new(else_expr));
     let main_call_expr = Expr::Call(Box::new(Expr::Identifier("a".into())), vec![]);
     let block_expr = Expr::Block(vec![main_call_expr.clone()]);
     let call_expr = Expr::Call(Box::new(Expr::Identifier("b".into())), vec![]);
@@ -59,12 +59,12 @@ fn parse_stmt_if_else() {
     assert_eq!(process_stmt("if ($a) a(); else if ($b) b(); else c();"), Expr::If(
         Box::new(Expr::Variable("a".into())),
         Box::new(Expr::Call(Box::new(Expr::Identifier("a".into())), vec![])),
-        Some(Box::new(
+        Box::new(
             Expr::If(Box::new(Expr::Variable("b".into())),
                 Box::new(Expr::Call(Box::new(Expr::Identifier("b".into())), vec![])),
-                Some(Box::new(Expr::Call(Box::new(Expr::Identifier("c".into())), vec![])))
+                Box::new(Expr::Call(Box::new(Expr::Identifier("c".into())), vec![]))
             )
-        ))
+        )
     ));
 }
 
@@ -80,14 +80,49 @@ fn parse_stmt_do_while() {
 fn parse_stmt_foreach() {
     assert_eq!(process_stmt("foreach ($test as $v) { ok(); }"), Expr::ForEach(
         Box::new(Expr::Variable("test".into())),
-        None, // key
-        Some(Box::new(Expr::Variable("v".into()))), // value
+        Box::new(Expr::None), // key
+        Box::new(Expr::Variable("v".into())), // value
         Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])])) //body
     ));
     assert_eq!(process_stmt("foreach ($test as $k => $v) { ok(); }"), Expr::ForEach(
         Box::new(Expr::Variable("test".into())),
-        Some(Box::new(Expr::Variable("k".into()))), // key
-        Some(Box::new(Expr::Variable("v".into()))), // value
+        Box::new(Expr::Variable("k".into())), // key
+        Box::new(Expr::Variable("v".into())), // value
         Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])])) //body
     ));
+}
+
+#[test]
+fn parse_func_decl() {
+    assert_eq!(process_stmt("function test() { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
+        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+    ));
+    assert_eq!(process_stmt("function test($a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
+        params: vec![ParamDefinition { name: "a".into() }],
+        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+    ));
+    assert_eq!(process_stmt("function test($a, $b) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
+        params: vec![ParamDefinition { name: "a".into() }, ParamDefinition { name: "b".into() }],
+        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+    ));
+}
+
+#[test]
+fn parse_class_decl() {
+    assert_eq!(process_stmt("class Test {}"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None
+    })));
+    assert_eq!(process_stmt("class Test extends Abc\\Test2 {}"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: Some(Path::NamespacedClass("Abc".into(), "Test2".into()))
+    })));
+}
+
+#[test]
+fn parse_namespace_decl() {
+    assert_eq!(process_stmt("namespace Foo\\Bar;"), Expr::Decl(Decl::Namespace(vec!["Foo".into(), "Bar".into()])));
+}
+
+#[test]
+fn parse_use_statement() {
+    assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(vec!["Test".into()]) ]));
 }
