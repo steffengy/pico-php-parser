@@ -106,9 +106,10 @@ fn parse_expr_object_property() {
     )), vec![]));
 }
 
-//#[test]
+#[test]
 fn parse_expr_static_property() {
     assert_eq!(process_expr(r#"Obj::$test"#), Expr::StaticProperty(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("test".into())]));
+    assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticProperty(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
 }
 
 #[test]
@@ -119,7 +120,7 @@ fn parse_expr_comment() {
     assert_comment("/*test*/s", false);
 }
 
-//#[test]
+#[test]
 fn parse_post_pre_dec_inc() {
     assert_eq!(process_expr("$c++"), Expr::UnaryOp(Op::PostInc, Box::new(Expr::Variable("c".into()))));
     assert_eq!(process_expr("$c--"), Expr::UnaryOp(Op::PostDec, Box::new(Expr::Variable("c".into()))));
@@ -127,7 +128,7 @@ fn parse_post_pre_dec_inc() {
     assert_eq!(process_expr("--$c"), Expr::UnaryOp(Op::PreDec, Box::new(Expr::Variable("c".into()))));
 }
 
-//#[test]
+#[test]
 fn parse_closure() {
     assert_eq!(process_expr("function () { c(); }"), Expr::Function(FunctionDecl {
         params: vec![],

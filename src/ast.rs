@@ -39,7 +39,8 @@ pub enum Expr<'a> {
     String(String),
     Int(i64),
     Variable(Cow<'a, str>),
-    Echo(Box<Expr<'a>>),
+    Block(Vec<Expr<'a>>),
+    Echo(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
 
     ArrayIdx(Box<Expr<'a>>, Vec<Expr<'a>>),
@@ -52,10 +53,10 @@ pub enum Expr<'a> {
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     /// If (condition.0) { Block.1 } else Else_Expr.2
-    If(Box<Expr<'a>>, Vec<Expr<'a>>, Option<Vec<Expr<'a>>>),
-    While(Box<Expr<'a>>, Vec<Expr<'a>>),
-    DoWhile(Vec<Expr<'a>>, Box<Expr<'a>>),
-    ForEach(Box<Expr<'a>>, Option<Cow<'a, str>>, Option<Cow<'a, str>>, Vec<Expr<'a>>),
+    If(Box<Expr<'a>>, Box<Expr<'a>>, Option<Box<Expr<'a>>>),
+    While(Box<Expr<'a>>, Box<Expr<'a>>),
+    DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
+    ForEach(Box<Expr<'a>>, Option<Box<Expr<'a>>>, Option<Box<Expr<'a>>>, Box<Expr<'a>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

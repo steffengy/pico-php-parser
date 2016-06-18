@@ -124,9 +124,10 @@ impl_rdp! {
         variable_name_list              =  { expression | (variable_name_list ~ [","] ~ expression) }
 
         // Section: Expressions
+        // In the reference this contains "", we use "array_creation_expression" to prevent infinite recursion
         primary_expression              =  {
-            variable_name | constant | qualified_name | literal |
-            constant_expression | intrinsic | anonym_func_creation_expression |
+            intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
+            array_creation_expression |
             ["$this"]
         }
         // added to parse constants explicitly, not in reference
@@ -138,8 +139,7 @@ impl_rdp! {
         intrinsic_construct             =  { echo_intrinsic | list_intrinsic | unset_intrinsic }
         intrinsic_operator              =  { array_intrinsic | empty_intrinsic | eval_intrinsic | exit_intrinsic | isset_intrinsic | print_intrinsic }
         array_intrinsic                 =  { ["array"] ~ ["("] ~ array_initializer? ~ [")"] }
-        echo_intrinsic                  =  { (["echo"] ~ expression) | (["echo"] ~ expression_list_two_or_more) }
-        expression_list_two_or_more     =  { (expression ~ [","] ~ expression) | (expression_list_two_or_more ~ [","] ~  expression) }
+        echo_intrinsic                  =  { ["echo"] ~ (expression ~ ([","] ~ expression)*) }
         empty_intrinsic                 =  { ["empty"] ~ ["("] ~ expression ~ [")"] }
         eval_intrinsic                  =  { ["eval"] ~ ["("] ~ expression ~ [")"] }
         exit_or_die                     =  { ["exit"] | ["die"] }
@@ -153,19 +153,27 @@ impl_rdp! {
         list_or_variable                =  { list_intrinsic | expression }
         print_intrinsic                 =  { (["print"] ~ expression) | (["print"] ~ ["("] ~ expression ~ [")"]) }
         unset_intrinsic                 =  { ["unset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
-        anonym_func_creation_expression =  { ["static"]? ~ ["function"] ~ ["&"]? ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ return_type? ~ anonym_func_use_clause? ~ compound_statement }
+        anonym_func_creation_expression =  {
+            ["static"]? ~ ["function"] ~ ["&"]? ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end
+            ~ return_type? ~ anonym_func_use_clause? ~ compound_statement
+        }
         anonym_func_use_clause          =  { ["use"] ~ ["("] ~ use_variable_name_list ~ [")"] }
-        use_variable_name_list          =  { (["&"]? ~ variable_name) | (use_variable_name_list ~ [","] ~ ["&"]? ~ variable_name) }
+        use_variable_name_list          =  { use_variable_name_expr ~ ([","] ~ use_variable_name_expr)* }
+        use_variable_name_expr          =  { ["&"]? ~ variable_name }
 
         //Section: Postfix Operators
         postfix_expression_internal     = _{
-            primary_expression | clone_expression | object_creation_expression | array_creation_expression |
-            /*function_call_expression |*/ postfix_increment_expression | postfix_decrement_expression | scope_resolution_expression
+            primary_expression | clone_expression | object_creation_expression | array_creation_expression
+            /*| function_call_expression | postfix_increment_expression | postfix_decrement_expression*/
+            /*TODO: | scope_resolution_expression */
         }
         // for PEST modified postfix_expression, which handles subscript and member selection
         postfix_expression              =  {
-            postfix_expression_internal ~ (subscript | function_call | member_selection)*
+            postfix_expression_internal ~
+            (subscript | function_call | member_selection | scope_resolution)* ~
+            increment_or_decrement_op?
         }
+        increment_or_decrement_op       =  { op_increment | op_decrement }
         clone_expression                =  { ["clone"] ~ expression }
         object_creation_expression      =  {
             ( ["new"] ~ class_type_designator ~ ["("] ~ argument_expression_list? ~ [")"] ) |
@@ -192,23 +200,25 @@ impl_rdp! {
         member_selection_designator     = _{ curly_braced_expression | variable_name | name }
         curly_braced_expression         =  { ["{"] ~ expression ~ curly_braced_expression_end }
         curly_braced_expression_end     =  { ["}"] }
-        postfix_increment_expression    =  { unary_expression ~ ["++"] }
-        postfix_decrement_expression    =  { unary_expression ~ ["--"] }
-        scope_resolution_expression     =  { scope_resolution_qualifier ~ ["::"] ~ (member_selection_designator | ["class"]) }
+        op_increment                    =  { ["++"] }
+        op_decrement                    =  { ["--"] }
+        scope_resolution                =  { ["::"] ~ (member_selection_designator | scope_class) }
+        scope_class                     =  { ["class"] }
+
+        /*TODO:
         scope_resolution_qualifier      =  { relative_scope | qualified_name | expression }
         relative_scope                  =  { ["self"] | ["parent"] | ["static"] }
+        */
 
         // Section: Unary Operators
         unary_expression                =  {
-            postfix_expression | postfix_increment_expression | postfix_decrement_expression | error_control_expression |
+            postfix_expression | error_control_expression |
             shell_command_expression | cast_expression | var_name_creation_expression
         }
-        prefix_increment_expression     =  { ["++"] ~ unary_expression }
-        prefix_decrement_expression     =  { ["--"] ~ unary_expression }
         unary_operator                  =  { op_add | op_sub | op_not | ["~"] }
         error_control_expression        =  { ["@"] ~ expression }
         shell_command_expression        =  { ["`"] ~ dq_char* ~ ["`"] }
-        cast_expression                 =  { unary_expression | (["("] ~ cast_type ~ [")"] ~ expression) }
+        cast_expression                 =  { (["("] ~ cast_type ~ [")"] ~ expression) }
         cast_type                       =  {
             ["array"] | ["binary"] | ["bool"] | ["boolean"] | ["double"] | ["int"] | ["integer"] | ["float"] | ["object"] | ["real"] |
             ["string"] | ["unset"]
@@ -216,18 +226,18 @@ impl_rdp! {
         // TODO: this shouldn't be ["$"] ~ expression (expression is too much for 1st subrule)
         var_name_creation_expression    =  { (["$"] ~ expression) | (["$"] ~ ["{"] ~ expression ~ ["}"]) }
 
-        // Section: instanceof Operator
-        instanceof_expression           =  { unary_expression | (instanceof_subject ~ ["instanceof"] ~ instanceof_type_designator) }
-        instanceof_subject              =  { expression }
-        instanceof_type_designator      =  { qualified_name | expression }
+        // TODO: solve this similarily to (); stuff? Section: instanceof Operator
+        //instanceof_expression           =  { unary_expression | (instanceof_subject ~ ["instanceof"] ~ instanceof_type_designator) }
+        //instanceof_subject              =  { expression }
+        //instanceof_type_designator      =  { qualified_name | expression }
 
         // Unary/Binary Operators from various sections rewritten to use precedence-climbing
         _exponentiation                 = _{
-            { (["("] ~ binary_expression ~ [")"]) | instanceof_expression }
+            { (["("] ~ binary_expression ~ [")"]) | unary_expression }
             exponentiation = {< op_pow }
         }
         _unary                          = _{ unary | _exponentiation }
-        unary                           =  { unary_operator ~ _unary }
+        unary                           =  { (increment_or_decrement_op ~ _exponentiation) | (unary_operator ~ _unary) }
         binary_expression = {
             { _unary }
             logical_inc_or_expression_1 =  { op_logical_inc_or_1 }
@@ -277,7 +287,7 @@ impl_rdp! {
 
         // Section: Assignment Operators
         assignment_expression           = {
-            conditional_expression | coalesce_expression | simple_assignment_expression | byref_assignment_expression | compound_assignment_expression
+            coalesce_expression | simple_assignment_expression | byref_assignment_expression | compound_assignment_expression | conditional_expression
         }
         simple_assignment_expression    = { unary_expression ~ ["="] ~ assignment_expression }
         byref_assignment_expression     = { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
@@ -323,92 +333,88 @@ impl_rdp! {
         // Statements
         // Section: General
         statement                       =  {
-            compound_statement | labeled_statement | expression_statement | selection_statement | iteration_statement |
-            jump_statement | declare_statement | const_declaration | function_definition | class_declaration |
+            compound_statement | labeled_statement | selection_statement | iteration_statement |
+            jump_statement | expression_statement | declare_statement | const_declaration | function_definition | class_declaration |
             interface_declaration | trait_declaration | namespace_definition | namespace_use_declaration |
             global_declaration | function_static_declaration
         }
 
         // Section: Compound Statement
-        compound_statement              =  { ["{"] ~ statement_list? ~ ["}"] }
+        compound_statement              =  { ["{"] ~ (!["}"] ~ statement_list)? ~ ["}"] }
         statement_list                  = _{ statement+ }
 
         // Section: Labeled Statement
-        labeled_statement               = { named_label_statement | case_statement | default_statement }
-        named_label_statement           = { name ~ [":"] ~ statement }
-        case_statement                  = { ["case"] ~ expression ~ case_default_label_terminator ~ statement }
-        default_statement               = { ["default"] ~ case_default_label_terminator ~ statement }
-        case_default_label_terminator   = { [":"] | [";"] }
+        labeled_statement               =  { named_label_statement | case_statement | default_statement }
+        named_label_statement           =  { name ~ [":"] ~ statement }
+        case_statement                  =  { ["case"] ~ expression ~ case_default_label_terminator ~ statement }
+        default_statement               =  { ["default"] ~ case_default_label_terminator ~ statement }
+        case_default_label_terminator   =  { [":"] | [";"] }
 
         // Section: Expression Statements
-        expression_statement            = { expression? ~ [";"] }
-        selection_statement             = { if_statement | switch_statement }
-        if_statement                    = {
-            (["if"] ~ ["("] ~ expression ~ [")"]) | (
-                (statement ~ elseif_clauses_1? ~ else_clause_1?) |
-                ([":"] ~ statement_list ~ elseif_clauses_2? ~ else_clause_2? ~ ["endif"] ~ [";"])
+        expression_statement            =  { expression? ~ [";"] }
+        selection_statement             =  { if_statement | switch_statement }
+        if_statement                    =  {
+            (["if"] ~ ["("] ~ expression ~ [")"]) ~ (
+                (statement ~ else_clause_1?) |
+                ([":"] ~ statement_list ~ else_clause_2? ~ ["endif"] ~ [";"])
             )
         }
-        elseif_clauses_1                = { elseif_clause_1 | (elseif_clauses_1 ~ elseif_clause_1) }
-        elseif_clause_1                 = { ["elseif"] ~ ["("] ~ expression ~ [")"] ~ statement }
-        else_clause_1                   = { ["else"] ~ statement }
-        elseif_clauses_2                = { elseif_clause_2 | (elseif_clauses_2 ~ elseif_clause_2) }
-        elseif_clause_2                 = { ["elseif"] ~ ["("] ~ expression ~ [")"] ~ [":"] ~ statement_list }
-        else_clause_2                   = { ["else"] ~ [":"] ~ statement_list }
-        switch_statement                = {
+        else_clause_1                   =  { ["else"] ~ statement }
+        else_clause_2                   =  { ["else"] ~ [":"] ~ statement_list }
+        switch_statement                =  {
             ( ["switch"] ~ ["("] ~ expression ~ [")"] ) ~ (
                 ( ["{"] ~ case_statements? ~ ["}"] ) |
                 ( [":"] ~ case_statements? ~ ["endswitch"] ~ [";"] )
             )
         }
-        case_statements                 = {
+        case_statements                 =  {
             (case_statement ~ statement_list? ~ case_statements?) |
             (default_statement ~ statement_list? ~ case_statements?)
         }
 
         // Section: Iteration Statements
-        iteration_statement             = { while_statement | do_statement | for_statement | foreach_statement }
-        while_statement                 = {
+        iteration_statement             =  { while_statement | do_statement | for_statement | foreach_statement }
+        while_statement                 =  {
             ( ["while"] ~ ["("] ~ expression ~ [")"] ) ~ (
                 statement |
                 ([":"] ~ statement_list ~ ["endwhile"] ~ [";"])
             )
         }
-        do_statement                    = { ["do"] ~ statement ~ ["while"] ~ ["("] ~ expression ~ [")"] ~ [";"] }
-        for_statement                   = {
+        do_statement                    =  { ["do"] ~ statement ~ ["while"] ~ ["("] ~ expression ~ [")"] ~ [";"] }
+        for_statement                   =  {
             ( ["for"] ~ ["("] ~ for_initializer? ~ [","] ~ for_control? ~ [","] ~ for_end_of_loop? ~ [")"] ) ~ (
                 statement |
                 ([":"] ~ statement_list ~ ["endfor"] ~ [";"])
             )
         }
-        for_initializer                 = { for_expression_group }
-        for_control                     = { for_expression_group }
-        for_end_of_loop                 = { for_expression_group }
-        for_expression_group            = { expression | (for_expression_group ~ [","] ~ expression) }
-        foreach_statement               = {
+        for_initializer                 =  { for_expression_group }
+        for_control                     =  { for_expression_group }
+        for_end_of_loop                 =  { for_expression_group }
+        for_expression_group            =  { expression | (for_expression_group ~ [","] ~ expression) }
+        foreach_statement               =  {
             ( ["foreach"] ~ ["("] ~ foreach_collection_name ~ ["as"] ~ foreach_key? ~ foreach_value ~ [")"] ) ~ (
                 statement |
                 ([":"] ~ statement_list ~ ["endforeach"] ~ [";"])
             )
         }
-        foreach_collection_name         = { expression }
-        foreach_key                     = { expression }
-        foreach_value                   = { (["&"]? ~ expression) | list_intrinsic }
+        foreach_collection_name         = _{ expression }
+        foreach_key                     =  { expression ~ ["=>"] }
+        foreach_value                   =  { (["&"]? ~ expression) | list_intrinsic }
 
         // Section: Jump Statements
-        jump_statement                  = {  goto_statement | continue_statement | break_statement | return_statement | throw_statement }
-        goto_statement                  = { ["goto"] ~ name ~ [";"] }
-        continue_statement              = { ["continue"] ~ breakout_level? ~ [";"] }
-        breakout_level                  = { integer_literal }
-        break_statement                 = { ["break"] ~ breakout_level? ~ [";"] }
-        return_statement                = { ["return"] ~ expression? ~ [";"] }
-        throw_statement                 = { ["throw"] ~ expression ~ [";"] }
+        jump_statement                  =  {  goto_statement | continue_statement | break_statement | return_statement | throw_statement }
+        goto_statement                  =  { ["goto"] ~ name ~ [";"] }
+        continue_statement              =  { ["continue"] ~ breakout_level? ~ [";"] }
+        breakout_level                  =  { integer_literal }
+        break_statement                 =  { ["break"] ~ breakout_level? ~ [";"] }
+        return_statement                =  { ["return"] ~ expression? ~ [";"] }
+        throw_statement                 =  { ["throw"] ~ expression ~ [";"] }
 
         // Section: try Statement
-        try_statement                   = { (["try"] ~ compound_statement) ~ ((catch_clauses ~ finally_clause?) | finally_clause) }
-        catch_clauses                   = { catch_clause | (catch_clauses ~ catch_clause) }
-        catch_clause                    = { ["catch"] ~ ["("] ~ qualified_name ~ variable_name ~ [")"] ~ compound_statement }
-        finally_clause                  = { ["finally"] ~ compound_statement }
+        try_statement                   =  { (["try"] ~ compound_statement) ~ ((catch_clauses ~ finally_clause?) | finally_clause) }
+        catch_clauses                   =  { catch_clause | (catch_clauses ~ catch_clause) }
+        catch_clause                    =  { ["catch"] ~ ["("] ~ qualified_name ~ variable_name ~ [")"] ~ compound_statement }
+        finally_clause                  =  { ["finally"] ~ compound_statement }
 
         // Section: declare Statement
         declare_statement               = {
@@ -421,55 +427,55 @@ impl_rdp! {
         declare_directive               = { (["ticks"] | ["encoding"] | ["strict_types"]) ~ ["="] ~ literal }
 
         // Section: Functions
-        function_definition             = { function_definition_header ~ compound_statement }
-        function_definition_header      = { ["function"] ~ ["&"]? ~ name ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ return_type? }
-        parameter_declaration_list      = { simple_param_declaration_list | variadic_declaration_list }
-        simple_param_declaration_list   = { parameter_declaration | (parameter_declaration_list ~ [","] ~ parameter_declaration) }
-        variadic_declaration_list       = { (simple_param_declaration_list ~ [","] ~ variadic_parameter) | variadic_parameter}
-        parameter_declaration           = { type_declaration? ~ ["&"]? ~ variable_name ~ default_argument_specifier? }
-        variadic_parameter              = { type_declaration? ~ ["&"]? ~ ["..."] ~ variable_name }
-        return_type                     = { ([":"] ~ type_declaration) | ([":"] ~ ["void"]) }
-        type_declaration                = { ["array"] | ["callable"] | scalar_type | qualified_name }
-        scalar_type                     = { ["bool"] | ["float"] | ["int"] | ["string"] }
-        default_argument_specifier      = { ["="] ~ constant_expression }
+        function_definition             =  { function_definition_header ~ compound_statement }
+        function_definition_header      =  { ["function"] ~ ["&"]? ~ name ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end ~ return_type? }
+        function_definition_param_end   =  { [")"] }
+        parameter_expression            =  { parameter_declaration | variadic_parameter }
+        parameter_declaration_list      = _{ parameter_expression ~ ([","] ~ parameter_expression)* }
+        parameter_declaration           =  { type_declaration? ~ ["&"]? ~ variable_name ~ default_argument_specifier? }
+        variadic_parameter              =  { type_declaration? ~ ["&"]? ~ ["..."] ~ variable_name }
+        return_type                     =  { ([":"] ~ type_declaration) | ([":"] ~ ["void"]) }
+        type_declaration                =  { ["array"] | ["callable"] | scalar_type | qualified_name }
+        scalar_type                     =  { ["bool"] | ["float"] | ["int"] | ["string"] }
+        default_argument_specifier      =  { ["="] ~ constant_expression }
 
         // Section: Classes
-        class_declaration               = { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? }
-        class_modifier                  = { ["abstract"] | ["final"] }
-        class_base_clause               = { ["extends"] ~ qualified_name }
-        class_interface_clause          = { (["implements"] ~ qualified_name) | (class_interface_clause ~ [","] ~ qualified_name) }
-        class_member_declarations       = { class_member_declaration | (class_member_declarations ~ class_member_declaration) }
-        class_member_declaration        = { const_declaration | property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
-        const_declaration               = { ["const"] ~ name ~ ["="] ~ constant_expression ~ [";"] }
-        property_declaration            = { property_modifier ~ variable_name ~ property_initializer? ~ [";"] }
-        property_modifier               = { ["var"] | (visibility_modifier ~ static_modifier?) | (static_modifier ~ visibility_modifier?) }
-        visibility_modifier             = { ["public"] | ["protected"] | ["private"] }
-        static_modifier                 = { ["static"] }
-        property_initializer            = { ["="] ~ constant_expression }
-        method_declaration              = { (method_modifiers? ~ function_definition) | (method_modifiers ~ function_definition_header ~ [";"]) }
-        method_modifiers                = { method_modifier | (method_modifiers ~ method_modifier) }
-        method_modifier                 = { visibility_modifier | static_modifier | class_modifier }
-        constructor_declaration         = { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__construct"] ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ compound_statement }
-        destructor_declaration          = { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
+        class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? }
+        class_modifier                  =  { ["abstract"] | ["final"] }
+        class_base_clause               =  { ["extends"] ~ qualified_name }
+        class_interface_clause          =  { (["implements"] ~ qualified_name) | (class_interface_clause ~ [","] ~ qualified_name) }
+        class_member_declarations       =  { class_member_declaration | (class_member_declarations ~ class_member_declaration) }
+        class_member_declaration        =  { const_declaration | property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
+        const_declaration               =  { ["const"] ~ name ~ ["="] ~ constant_expression ~ [";"] }
+        property_declaration            =  { property_modifier ~ variable_name ~ property_initializer? ~ [";"] }
+        property_modifier               =  { ["var"] | (visibility_modifier ~ static_modifier?) | (static_modifier ~ visibility_modifier?) }
+        visibility_modifier             =  { ["public"] | ["protected"] | ["private"] }
+        static_modifier                 =  { ["static"] }
+        property_initializer            =  { ["="] ~ constant_expression }
+        method_declaration              =  { (method_modifiers? ~ function_definition) | (method_modifiers ~ function_definition_header ~ [";"]) }
+        method_modifiers                =  { method_modifier | (method_modifiers ~ method_modifier) }
+        method_modifier                 =  { visibility_modifier | static_modifier | class_modifier }
+        constructor_declaration         =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__construct"] ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ compound_statement }
+        destructor_declaration          =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
 
         // Section: Interfaces
-        interface_declaration           = { ["interface"] ~ name ~ interface_base_clause? ~ ["{"] ~ interface_member_declarations? ~ ["}"] }
-        interface_base_clause           = { (["extends"] ~ qualified_name) | (interface_base_clause ~ [","] ~ qualified_name) }
-        interface_member_declarations   = { interface_member_declaration | (interface_member_declarations ~ interface_member_declaration) }
-        interface_member_declaration    = { const_declaration | method_declaration }
+        interface_declaration           =  { ["interface"] ~ name ~ interface_base_clause? ~ ["{"] ~ interface_member_declarations? ~ ["}"] }
+        interface_base_clause           =  { (["extends"] ~ qualified_name) | (interface_base_clause ~ [","] ~ qualified_name) }
+        interface_member_declarations   =  { interface_member_declaration | (interface_member_declarations ~ interface_member_declaration) }
+        interface_member_declaration    =  { const_declaration | method_declaration }
 
         // Section: Traits
-        trait_declaration               = { ["trait"] ~ name ~ ["{"] ~ trait_member_declarations? ~ ["}"] }
-        trait_member_declarations       = { trait_member_declaration | (trait_member_declarations ~ trait_member_declaration) }
-        trait_member_declaration        = { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clauses }
-        trait_use_clause                = { ["use"] ~ trait_name_list ~ trait_use_specification }
-        trait_use_clauses               = { trait_use_clause | (trait_use_clauses ~ trait_use_clause) }
-        trait_name_list                 = { qualified_name | (trait_name_list ~ [","] ~ qualified_name) }
-        trait_use_specification         = { [";"] | (["{"] ~ trait_select_and_alias_clauses? ~ ["}"]) }
-        trait_select_and_alias_clauses  = { trait_select_and_alias_clause | (trait_select_and_alias_clauses ~ trait_select_and_alias_clause) }
-        trait_select_and_alias_clause   = { (trait_select_insteadof_clause | trait_alias_as_clause) ~ [";"] }
-        trait_select_insteadof_clause   = { name ~ ["insteadof"] ~ name }
-        trait_alias_as_clause           = {
+        trait_declaration               =  { ["trait"] ~ name ~ ["{"] ~ trait_member_declarations? ~ ["}"] }
+        trait_member_declarations       =  { trait_member_declaration | (trait_member_declarations ~ trait_member_declaration) }
+        trait_member_declaration        =  { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clauses }
+        trait_use_clause                =  { ["use"] ~ trait_name_list ~ trait_use_specification }
+        trait_use_clauses               =  { trait_use_clause | (trait_use_clauses ~ trait_use_clause) }
+        trait_name_list                 =  { qualified_name | (trait_name_list ~ [","] ~ qualified_name) }
+        trait_use_specification         =  { [";"] | (["{"] ~ trait_select_and_alias_clauses? ~ ["}"]) }
+        trait_select_and_alias_clauses  =  { trait_select_and_alias_clause | (trait_select_and_alias_clauses ~ trait_select_and_alias_clause) }
+        trait_select_and_alias_clause   =  { (trait_select_insteadof_clause | trait_alias_as_clause) ~ [";"] }
+        trait_select_insteadof_clause   =  { name ~ ["insteadof"] ~ name }
+        trait_alias_as_clause           =  {
             name ~ ["as"] ~ (
                 (visibility_modifier? ~ name) |
                 (visibility_modifier ~ name?)
@@ -477,26 +483,26 @@ impl_rdp! {
         }
 
         // Section: Namespaces
-        namespace_definition            = {
+        namespace_definition            =  {
             ["namespace"] ~ (
                 (name ~ [";"]) |
                 (name? ~ compound_statement)
             )
         }
-        namespace_use_declaration       = {
+        namespace_use_declaration       =  {
             (["use"] ~ namespace_function_or_const? ~ namespace_use_clauses ~ [";"]) |
             (["use"] ~ namespace_function_or_const ~ ["\\"]? ~ namespace_name ~ ["\\"]) |
             (["{"] ~ namespace_use_group_clauses_1 ~ ["}"]) |
             (["use"] ~ ["\\"]? ~ namespace_name ~ ["\\"] ~ ["{"] ~ namespace_use_group_clauses_2 ~ ["}"] ~ [";"])
         }
-        namespace_use_clauses           = { namespace_use_clause | (namespace_use_clauses ~ [","] ~ namespace_use_clause) }
-        namespace_use_clause            = { qualified_name ~ namespace_aliasing_clause? }
-        namespace_aliasing_clause       = { ["as"] ~ name }
-        namespace_function_or_const     = { ["function"] | ["const"] }
-        namespace_use_group_clauses_1   = { namespace_use_group_clause_1 | (namespace_use_group_clauses_1 ~ [","] ~ namespace_use_group_clause_1) }
-        namespace_use_group_clause_1    = { namespace_name ~ namespace_aliasing_clause? }
-        namespace_use_group_clauses_2   = { namespace_use_group_clause_2 | (namespace_use_group_clauses_2 ~ [","] ~ namespace_use_group_clause_2) }
-        namespace_use_group_clause_2    = { namespace_function_or_const? ~ namespace_name ~ namespace_aliasing_clause? }
+        namespace_use_clauses           =  { namespace_use_clause | (namespace_use_clauses ~ [","] ~ namespace_use_clause) }
+        namespace_use_clause            =  { qualified_name ~ namespace_aliasing_clause? }
+        namespace_aliasing_clause       =  { ["as"] ~ name }
+        namespace_function_or_const     =  { ["function"] | ["const"] }
+        namespace_use_group_clauses_1   =  { namespace_use_group_clause_1 | (namespace_use_group_clauses_1 ~ [","] ~ namespace_use_group_clause_1) }
+        namespace_use_group_clause_1    =  { namespace_name ~ namespace_aliasing_clause? }
+        namespace_use_group_clauses_2   =  { namespace_use_group_clause_2 | (namespace_use_group_clauses_2 ~ [","] ~ namespace_use_group_clause_2) }
+        namespace_use_group_clause_2    =  { namespace_function_or_const? ~ namespace_name ~ namespace_aliasing_clause? }
 
         comment = _{
             ( (["//"] | ["#"]) ~ (!(["\r"] | ["\n"]) ~ any)* ~ (["\n"] | ["\r\n"] | ["\r"] | eoi) ) |
@@ -523,6 +529,9 @@ impl_rdp! {
 
         _assignment_expression(&self) -> Result<Expr<'n>, ParseError> {
             (_: conditional_expression, e: _conditional_expression()) => e,
+            (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
+                Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
+            }
         }
 
         _conditional_expression(&self) -> Result<Expr<'n>, ParseError> {
@@ -531,6 +540,13 @@ impl_rdp! {
 
         _binary_expression(&self) -> Result<Expr<'n>, ParseError> {
             (_: binary_expression, e: _binary_expression()) => e,
+            (_: unary, _: increment_or_decrement_op, op, operand: _binary_expression()) => {
+                Ok(Expr::UnaryOp(match op.rule {
+                    Rule::op_increment => Op::PreInc,
+                    Rule::op_decrement => Op::PreDec,
+                    _ => unreachable!()
+                }, Box::new(try!(operand))))
+            },
             (_: unary, _: unary_operator, op, operand: _binary_expression()) => {
                 Ok(Expr::UnaryOp(match op.rule {
                     Rule::op_not => Op::Not,
@@ -561,11 +577,7 @@ impl_rdp! {
             (_: exponentiation, left: _binary_expression(), _: op_pow, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Pow, Box::new(try!(left)), Box::new(try!(right))))
             },
-            (_: instanceof_expression, e: _instanceof_expression()) => e
-        }
-
-        _instanceof_expression(&self) -> Result<Expr<'n>, ParseError> {
-            (_: unary_expression, e: _unary_expression()) => e,
+            (_: unary_expression, e: _unary_expression()) => e
         }
 
         _unary_expression(&self) -> Result<Expr<'n>, ParseError> {
@@ -577,6 +589,18 @@ impl_rdp! {
         }
 
         _postfix_expression(&self) -> Result<Expr<'n>, ParseError> {
+            (e: _postfix_expression_idxs(), _: increment_or_decrement_op, op) => {
+                match op.rule {
+                    Rule::op_increment => Ok(Expr::UnaryOp(Op::PostInc, Box::new(try!(e)))),
+                    Rule::op_decrement => Ok(Expr::UnaryOp(Op::PostDec, Box::new(try!(e)))),
+                    _ => unreachable!(),
+                }
+            },
+            (e: _postfix_expression_idxs()) => e,
+        }
+
+        // handle array index, property, fcall, static property, ...
+        _postfix_expression_idxs(&self) -> Result<Expr<'n>, ParseError> {
             (pfe: _postfix_expression_internal(), pexprs: _post_exprs()) => {
                 // fold the given expressions (constructing proper call/indexing expressions)
                 let expr = try!(pexprs).into_iter().fold(try!(pfe), |initial, elem| {
@@ -641,6 +665,22 @@ impl_rdp! {
                 next.push_front(IdxExpr::ObjProperty(try!(e)));
                 Ok(next)
             },
+            // same as 3 above, for static's
+            (_: scope_resolution, _: variable_name, &name: name, next: _post_exprs()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExpr::StaticProperty(Expr::Variable(name.into())));
+                Ok(next)
+            },
+            (_: scope_resolution, &name: name, next: _post_exprs()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExpr::StaticProperty(Expr::Identifier(name.into())));
+                Ok(next)
+            },
+            (_: scope_resolution, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExpr::StaticProperty(try!(e)));
+                Ok(next)
+            },
             () => Ok(LinkedList::new())
         }
 
@@ -656,6 +696,13 @@ impl_rdp! {
         }
 
         _primary_expression(&self) -> Result<Expr<'n>, ParseError> {
+            (_: intrinsic, i: _intrinsic()) => i,
+            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements()) => {
+                Ok(Expr::Function(FunctionDecl {
+                    params: vec![], //TODO
+                    body: try!(body).into_iter().collect(),
+                }))
+            },
             (_: qualified_name, e: _qualified_name()) => {
                 let mut e = try!(e);
                 Ok(if e.len() > 1 {
@@ -667,6 +714,86 @@ impl_rdp! {
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
             (_: literal, e: _literal()) => e,
             (_: constant, e: _constant()) => e,
+        }
+
+        _intrinsic(&self) -> Result<Expr<'n>, ParseError> {
+            (_: intrinsic_construct, ic: _intrinsic_construct()) => ic,
+        }
+
+        _intrinsic_construct(&self) -> Result<Expr<'n>, ParseError> {
+            (_: echo_intrinsic, args: _multiple_expressions()) => {
+                Ok(Expr::Echo(try!(args).into_iter().collect()))
+            }
+        }
+
+        // as used for compound statements
+        _multiple_statements(&self) -> Result<LinkedList<Expr<'n>>, ParseError> {
+            (_: statement, st: _statement(), next: _multiple_statements()) => {
+                let mut next = try!(next);
+                next.push_front(try!(st));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _multiple_expressions(&self) -> Result<LinkedList<Expr<'n>>, ParseError> {
+            (_: expression, ex: _expression(), next: _multiple_expressions()) => {
+                let mut next = try!(next);
+                next.push_front(try!(ex));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _statement(&self) -> Result<Expr<'n>, ParseError> {
+            (_: expression_statement, e: _expression()) => e,
+            (_: jump_statement, st: _jump_statement()) => st,
+            (_: selection_statement, st: _selection_statement()) => st,
+            (_: iteration_statement, st: _iteration_statement()) => st,
+            (_: compound_statement, st: _multiple_statements()) => Ok(Expr::Block(try!(st).into_iter().collect())),
+            (_: statement, st: _statement()) => st,
+        }
+
+        _jump_statement(&self) -> Result<Expr<'n>, ParseError> {
+            (_: return_statement, _: expression, e: _expression()) => Ok(Expr::Return(Box::new(try!(e)))),
+            (_: return_statement) => Ok(Expr::Return(Box::new(Expr::None))),
+        }
+
+        _iteration_statement(&self) -> Result<Expr<'n>, ParseError> {
+            (_: while_statement, _: expression, e: _expression(), _: statement, st: _statement()) => {
+                Ok(Expr::While(Box::new(try!(e)), Box::new(try!(st))))
+            },
+            (_: do_statement, _: statement, st: _statement(), _: expression, e: _expression()) => {
+                Ok(Expr::DoWhile(Box::new(try!(st)), Box::new(try!(e))))
+            },
+            (_: foreach_statement, _: expression, e: _expression(), kv: _foreach_key_value(), st: _statement()) => {
+                let kv = try!(kv);
+                Ok(Expr::ForEach(Box::new(try!(e)), kv.0.map(|x| Box::new(x)), kv.1.map(|x| Box::new(x)), Box::new(try!(st))))
+            }
+        }
+
+        _foreach_key_value(&self) -> Result<(Option<Expr<'n>>, Option<Expr<'n>>), ParseError> {
+            (_: foreach_key, k: _expression(), _: foreach_value, v: _expression()) => Ok((Some(try!(k)), Some(try!(v)))),
+            (_: foreach_value, v: _expression()) => Ok((None, Some(try!(v)))),
+        }
+
+        _selection_statement(&self) -> Result<Expr<'n>, ParseError> {
+            (_: if_statement, ifstmt: _if_statement()) => ifstmt,
+        }
+
+        _if_statement(&self) -> Result<Expr<'n>, ParseError> {
+            (exp: _expression(), _: statement, st: _statement(), elsec: _else_clause()) => {
+                Ok(Expr::If(Box::new(try!(exp)), Box::new(try!(st)), try!(elsec).map(|x| Box::new(x))))
+            }
+        }
+
+        _else_clause(&self) -> Result<Option<Expr<'n>>, ParseError> {
+            (_: else_clause_1, st: _statement()) => Ok(Some(try!(st))),
+            () => Ok(None),
+        }
+
+        _function_definition_params(&self) -> Result<LinkedList<()>, ParseError> {
+            () => Ok(LinkedList::new())
         }
 
         _constant(&self) -> Result<Expr<'n>, ParseError> {
@@ -778,8 +905,7 @@ pub fn process_stmt(input: &str) -> Expr {
     assert!(parser.statement());
     println!("{:?} @{}", parser.queue(), parser.pos());
     assert!(parser.end());
-    //TODO
-    Expr::None
+    parser._statement().unwrap()
 }
 
 pub fn process_expr(input: &str) -> Expr {
