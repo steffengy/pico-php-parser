@@ -110,10 +110,28 @@ fn parse_func_decl() {
 #[test]
 fn parse_class_decl() {
     assert_eq!(process_stmt("class Test {}"), Expr::Decl(Decl::Class(ClassDecl {
-        name: "Test".into(), base_class: None
+        name: "Test".into(), base_class: None, members: vec![]
     })));
     assert_eq!(process_stmt("class Test extends Abc\\Test2 {}"), Expr::Decl(Decl::Class(ClassDecl {
-        name: "Test".into(), base_class: Some(Path::NamespacedClass("Abc".into(), "Test2".into()))
+        name: "Test".into(), base_class: Some(Path::NamespacedClass("Abc".into(), "Test2".into())), members: vec![]
+    })));
+}
+
+#[test]
+fn parse_class_properties() {
+    assert_eq!(process_stmt("class Test { public $test; }"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None,
+        members: vec![ClassMember::Property(Modifiers(false, Visibility::Public, ClassModifier::None), "test".into(), Expr::None)]
+    })));
+}
+
+#[test]
+fn parse_class_methods() {
+    assert_eq!(process_stmt("class Test { public function a() { run(); } }"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None,
+        members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "a".into(), FunctionDecl {
+            params: vec![], body: vec![Expr::Call(Box::new(Expr::Identifier("run".into())), vec![])]
+        })]
     })));
 }
 

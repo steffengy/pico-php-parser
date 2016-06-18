@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{ParsedItem, Expr, Op, Decl, ClassDecl, FunctionDecl, ParamDefinition, UseClause, Path};
+use ast::{ParsedItem, Expr, Op, Decl, ClassDecl, FunctionDecl, ParamDefinition, UseClause, Path, ClassMember, Visibility, Modifiers, ClassModifier};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -53,7 +53,7 @@ impl_rdp! {
         script                          =  { script_section+ }
         start_tag                       = _{ ["<?php"] | ["<?="] }
         end_tag                         = _{ ["?>"] }
-        script_section                  =  { text? ~ start_tag ~ statement_list? ~ end_tag ~ text? }
+        script_section                  =  { text? ~ start_tag ~ statement_list? ~ end_tag? ~ text? }
         text                            =  { (!start_tag ~ any)+ }
 
         // Section: Names
@@ -447,20 +447,25 @@ impl_rdp! {
 
         // Section: Classes
         class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ (!["}"] ~ class_member_declarations)? ~ ["}"] }
-        class_modifier                  =  { ["abstract"] | ["final"] }
+        class_modifier                  =  { class_modifier_abstract | class_modifier_final }
+        class_modifier_abstract         =  { ["abstract"] }
+        class_modifier_final            =  { ["final"] }
         class_base_clause               =  { ["extends"] ~ qualified_name }
         class_interface_clause          =  { ["implements"] ~ qualified_name ~ ([","] ~ qualified_name)* }
         class_member_declarations       = _{ class_member_declaration* }
         class_member_declaration        =  { const_declaration | property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
         const_declaration               =  { ["const"] ~ name ~ ["="] ~ constant_expression ~ [";"] }
         property_declaration            =  { property_modifier ~ variable_name ~ property_initializer? ~ [";"] }
-        property_modifier               =  { ["var"] | (visibility_modifier ~ static_modifier?) | (static_modifier ~ visibility_modifier?) }
-        visibility_modifier             =  { ["public"] | ["protected"] | ["private"] }
+        property_modifier               = _{ ["var"] | (visibility_modifier ~ static_modifier?) | (static_modifier ~ visibility_modifier?) }
+        visibility_modifier             =  { visibility_public | visibility_protected | visibility_private }
+        visibility_public               =  { ["public"] }
+        visibility_protected            =  { ["protected"] }
+        visibility_private              =  { ["private"] }
         static_modifier                 =  { ["static"] }
         property_initializer            =  { ["="] ~ constant_expression }
         method_declaration              =  { (method_modifiers? ~ function_definition) | (method_modifiers ~ function_definition_header ~ [";"]) }
-        method_modifiers                =  { method_modifier | (method_modifiers ~ method_modifier) }
-        method_modifier                 =  { visibility_modifier | static_modifier | class_modifier }
+        method_modifiers                = _{ method_modifier+ }
+        method_modifier                 = _{ visibility_modifier | static_modifier | class_modifier }
         constructor_declaration         =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__construct"] ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ compound_statement }
         destructor_declaration          =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
 
@@ -546,6 +551,10 @@ impl_rdp! {
 
         _expression(&self) -> Result<Expr<'n>, ParseError> {
             (_: yield_expression, e: _yield_expression()) => e,
+            (_: expression, e: _expression()) => e,
+        }
+
+        _constant_expression(&self) -> Result<Expr<'n>, ParseError> {
             (_: expression, e: _expression()) => e,
         }
 
@@ -804,7 +813,7 @@ impl_rdp! {
                     body: try!(body).into_iter().collect(),
                 })))
             },
-            (_: class_declaration, &name: name, extends: _class_extends()) => {
+            (_: class_declaration, &name: name, extends: _class_extends(), members: _class_members()) => {
                 let extends = try!(extends);
                 let base_clause = if extends.is_empty() {
                     None
@@ -814,6 +823,7 @@ impl_rdp! {
                 Ok(Expr::Decl(Decl::Class(ClassDecl {
                     name: name.into(),
                     base_class: base_clause,
+                    members: try!(members).into_iter().collect(),
                 })))
             },
             (_: namespace_definition, _: namespace_name, nsi: _namespace_name_item()) => {
@@ -828,6 +838,62 @@ impl_rdp! {
         _class_extends(&self) -> Result<Vec<Cow<'n, str>>, ParseError> {
             (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(try!(qn).into_iter().collect()),
             () => Ok(vec![]),
+        }
+
+        _class_members(&self) -> Result<LinkedList<ClassMember<'n>>, ParseError> {
+            (_: class_member_declaration, member: _class_member(), next: _class_members()) => {
+                let mut next = try!(next);
+                next.push_front(try!(member));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _class_member(&self) -> Result<ClassMember<'n>, ParseError> {
+            (_: property_declaration, modifiers: _modifiers(), _: variable_name, &name: name, default_value: _opt_property_value()) => {
+                Ok(ClassMember::Property(try!(modifiers), name.into(), try!(default_value)))
+            },
+            (_: method_declaration, modifiers: _modifiers(), _: function_definition, _: function_definition_header,
+                &name: name, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement,
+                body: _multiple_statements()) => {
+                Ok(ClassMember::Method(try!(modifiers), name.into(), FunctionDecl {
+                    params: try!(params).into_iter().collect(),
+                    body: try!(body).into_iter().collect(),
+                }))
+            }
+        }
+
+        _opt_property_value(&self) -> Result<Expr<'n>, ParseError> {
+            (_: property_initializer, _: constant_expression, e: _constant_expression()) => e,
+            () => Ok(Expr::None)
+        }
+
+        _modifiers(&self) -> Result<Modifiers, ParseError> {
+            (_: static_modifier, next: _modifiers()) => {
+                let mut next = try!(next);
+                next.0 = true;
+                Ok(next)
+            },
+            (_: visibility_modifier, visibility, next: _modifiers()) => {
+                let mut next = try!(next);
+                next.1 = match visibility.rule {
+                    Rule::visibility_private => Visibility::Private,
+                    Rule::visibility_public => Visibility::Public,
+                    Rule::visibility_protected => Visibility::Protected,
+                    _ => unreachable!()
+                };
+                Ok(next)
+            },
+            (_: class_modifier, modifier, next: _modifiers()) => {
+                let mut next = try!(next);
+                next.2 = match modifier.rule {
+                    Rule::class_modifier_final => ClassModifier::Final,
+                    Rule::class_modifier_abstract => ClassModifier::Abstract,
+                    _ => unreachable!()
+                };
+                Ok(next)
+            },
+            () => Ok(Modifiers(false, Visibility::None, ClassModifier::None))
         }
 
         _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'n>>, ParseError> {

@@ -44,10 +44,22 @@ pub enum Op {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Visibility {
+    None,
     Public,
     Private,
     Protected
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ClassModifier {
+    None,
+    Abstract,
+    Final,
+}
+
+/// the boolean indicates whether the underlying item is static or not
+#[derive(Clone, Debug, PartialEq)]
+pub struct Modifiers(pub bool, pub Visibility, pub ClassModifier);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr<'a> {
@@ -101,6 +113,13 @@ pub struct FunctionDecl<'a> {
 pub struct ClassDecl<'a> {
     pub name: Cow<'a, str>,
     pub base_class: Option<Path<'a>>,
+    pub members: Vec<ClassMember<'a>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ClassMember<'a> {
+    Property(Modifiers, Cow<'a, str>, Expr<'a>),
+    Method(Modifiers, Cow<'a, str>, FunctionDecl<'a>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
