@@ -124,8 +124,6 @@ pub enum ClassMember<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl<'a> {
-    /// A set of statements
-    Block(Vec<Expr<'a>>),
     Namespace(Vec<Cow<'a, str>>),
     GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
     Class(ClassDecl<'a>),

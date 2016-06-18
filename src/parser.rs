@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{ParsedItem, Expr, Op, Decl, ClassDecl, FunctionDecl, ParamDefinition, UseClause, Path, ClassMember, Visibility, Modifiers, ClassModifier};
+use ast::{Expr, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, UseClause, Visibility};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -659,7 +659,6 @@ impl_rdp! {
             (pfe: _postfix_expression_internal(), pexprs: _post_exprs()) => {
                 // fold the given expressions (constructing proper call/indexing expressions)
                 let expr = try!(pexprs).into_iter().fold(try!(pfe), |initial, elem| {
-                    println!("{:?} -> {:?}", initial, elem);
                     match (initial, elem) {
                         (Expr::ArrayIdx(e, mut elems), IdxExpr::ArrayIdx(ai)) => {
                             elems.push(ai);
@@ -696,7 +695,6 @@ impl_rdp! {
         _post_exprs(&self) -> Result<LinkedList<IdxExpr<'n>>, ParseError> {
             (_: subscript, _: expression, e: _expression(), _: subscript_end, next: _post_exprs()) => {
                 let mut next = try!(next);
-                println!("t: {:?}", e);
                 next.push_front(IdxExpr::ArrayIdx(try!(e)));
                 Ok(next)
             },
@@ -1067,7 +1065,7 @@ fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
 pub fn process_script(input: &str) -> Vec<ParsedItem> {
     let mut parser = Rdp::new(StringInput::new(input));
     assert!(parser.script());
-    println!("{:?} @{}", parser.queue(), parser.pos());
+    //println!("{:?} @{}", parser.queue(), parser.pos());
     assert!(parser.end());
     parser.process().unwrap()
 }
