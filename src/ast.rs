@@ -73,14 +73,15 @@ pub enum Expr<'a> {
     Int(i64),
     Array(Vec<(Box<Expr<'a>>, Box<Expr<'a>>)>),
     Variable(Cow<'a, str>),
+    Reference(Box<Expr<'a>>),
     Block(Vec<Expr<'a>>),
     Use(Vec<UseClause<'a>>),
     Echo(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
 
     ArrayIdx(Box<Expr<'a>>, Vec<Expr<'a>>),
-    ObjProperty(Box<Expr<'a>>, Vec<Expr<'a>>),
-    StaticProperty(Box<Expr<'a>>, Vec<Expr<'a>>),
+    ObjMember(Box<Expr<'a>>, Vec<Expr<'a>>),
+    StaticMember(Box<Expr<'a>>, Vec<Expr<'a>>),
     Call(Box<Expr<'a>>, Vec<Expr<'a>>),
     New(Path<'a>, Vec<Expr<'a>>),
     UnaryOp(Op, Box<Expr<'a>>),
@@ -88,13 +89,14 @@ pub enum Expr<'a> {
     Function(FunctionDecl<'a>),
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
+    AssignRef(Box<Expr<'a>>, Box<Expr<'a>>),
     /// If (condition.0) { Block.1 } else Else_Expr.2
     If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     While(Box<Expr<'a>>, Box<Expr<'a>>),
     DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
     ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
 
-    // These are not actual expressions, but will be stored as such before filtered out
+    // These are not actual expressions, but will be stored as such, before any filtering happens
     Decl(Decl<'a>),
 }
 

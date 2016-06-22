@@ -27,8 +27,8 @@ impl From<ParseIntError> for ParseError {
 enum IdxExpr<'a> {
     ArrayIdx(Expr<'a>),
     Call(Vec<Expr<'a>>),
-    ObjProperty(Expr<'a>),
-    StaticProperty(Expr<'a>),
+    ObjMember(Expr<'a>),
+    StaticMember(Expr<'a>),
 }
 
 /// (mostly) based on: https://github.com/php/php-langspec/commit/46a218a09ef6156e419194122a440e5400967fe2
@@ -170,7 +170,7 @@ impl_rdp! {
 
         //Section: Postfix Operators
         postfix_expression_internal     = _{
-            clone_expression | object_creation_expression | array_creation_expression | primary_expression
+            ref_expression | clone_expression | object_creation_expression | array_creation_expression | primary_expression
             /*TODO: | scope_resolution_expression */
         }
         // for PEST modified postfix_expression, which handles subscript and member selection
@@ -180,6 +180,7 @@ impl_rdp! {
             increment_or_decrement_op?
         }
         increment_or_decrement_op       =  { op_increment | op_decrement }
+        ref_expression                  =  { ["&"] ~ assignment_expression }
         clone_expression                =  { ["clone"] ~ expression }
         object_creation_expression      =  {
             ( ["new"] ~ class_type_designator ~ ["("] ~ (!function_call_end ~ argument_expression_list)? ~ function_call_end ) |
@@ -293,7 +294,7 @@ impl_rdp! {
 
         // Section: Assignment Operators
         assignment_expression           = {
-            coalesce_expression | simple_assignment_expression | byref_assignment_expression | compound_assignment_expression | conditional_expression
+            coalesce_expression | byref_assignment_expression | simple_assignment_expression | compound_assignment_expression | conditional_expression
         }
         simple_assignment_expression    = { unary_expression ~ ["="] ~ assignment_expression }
         byref_assignment_expression     = { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
@@ -346,7 +347,8 @@ impl_rdp! {
         }
 
         // Section: Compound Statement
-        compound_statement              =  { ["{"] ~ (!["}"] ~ statement_list)? ~ ["}"] }
+        compound_statement              =  { ["{"] ~ (!["}"] ~ statement_list)? ~ compound_statement_end }
+        compound_statement_end          =  { ["}"] }
         statement_list                  = _{ statement+ }
 
         // Section: Labeled Statement
@@ -566,6 +568,9 @@ impl_rdp! {
             (_: conditional_expression, e: _conditional_expression()) => e,
             (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
+            },
+            (_: byref_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
+                Ok(Expr::AssignRef(Box::new(try!(ex)), Box::new(try!(ae))))
             }
         }
 
@@ -621,6 +626,7 @@ impl_rdp! {
 
         _postfix_expression_internal(&self) -> Result<Expr<'n>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
+            (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
             (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), args: _call_args(), _: function_call_end) => {
                 Ok(Expr::New(qualified_name_to_path(try!(qn)), try!(args).into_iter().collect()))
             },
@@ -664,13 +670,13 @@ impl_rdp! {
                             elems.push(ai);
                             Expr::ArrayIdx(e, elems)
                         },
-                        (Expr::ObjProperty(e, mut elems), IdxExpr::ObjProperty(objp)) => {
+                        (Expr::ObjMember(e, mut elems), IdxExpr::ObjMember(objp)) => {
                             elems.push(objp);
-                            Expr::ObjProperty(e, elems)
+                            Expr::ObjMember(e, elems)
                         },
-                        (Expr::StaticProperty(e, mut elems), IdxExpr::StaticProperty(stp)) => {
+                        (Expr::StaticMember(e, mut elems), IdxExpr::StaticMember(stp)) => {
                             elems.push(stp);
-                            Expr::StaticProperty(e, elems)
+                            Expr::StaticMember(e, elems)
                         },
                         (a, IdxExpr::Call(args)) => {
                             Expr::Call(Box::new(a), args)
@@ -678,11 +684,11 @@ impl_rdp! {
                         (a, IdxExpr::ArrayIdx(idx)) => {
                             Expr::ArrayIdx(Box::new(a), vec![idx])
                         },
-                        (a, IdxExpr::ObjProperty(objp)) => {
-                            Expr::ObjProperty(Box::new(a), vec![objp])
+                        (a, IdxExpr::ObjMember(objp)) => {
+                            Expr::ObjMember(Box::new(a), vec![objp])
                         },
-                        (a, IdxExpr::StaticProperty(stp)) => {
-                            Expr::StaticProperty(Box::new(a), vec![stp])
+                        (a, IdxExpr::StaticMember(stp)) => {
+                            Expr::StaticMember(Box::new(a), vec![stp])
                         }
                     }
                 });
@@ -705,33 +711,33 @@ impl_rdp! {
             },
             (_: member_selection, _: variable_name, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::ObjProperty(Expr::Variable(name.into())));
+                next.push_front(IdxExpr::ObjMember(Expr::Variable(name.into())));
                 Ok(next)
             },
             (_: member_selection, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::ObjProperty(Expr::Identifier(name.into())));
+                next.push_front(IdxExpr::ObjMember(Expr::Identifier(name.into())));
                 Ok(next)
             },
             (_: member_selection, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::ObjProperty(try!(e)));
+                next.push_front(IdxExpr::ObjMember(try!(e)));
                 Ok(next)
             },
             // same as 3 above, for static's
             (_: scope_resolution, _: variable_name, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::StaticProperty(Expr::Variable(name.into())));
+                next.push_front(IdxExpr::StaticMember(Expr::Variable(name.into())));
                 Ok(next)
             },
             (_: scope_resolution, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::StaticProperty(Expr::Identifier(name.into())));
+                next.push_front(IdxExpr::StaticMember(Expr::Identifier(name.into())));
                 Ok(next)
             },
             (_: scope_resolution, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::StaticProperty(try!(e)));
+                next.push_front(IdxExpr::StaticMember(try!(e)));
                 Ok(next)
             },
             () => Ok(LinkedList::new())
@@ -750,7 +756,7 @@ impl_rdp! {
 
         _primary_expression(&self) -> Result<Expr<'n>, ParseError> {
             (_: intrinsic, i: _intrinsic()) => i,
-            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements()) => {
+            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Function(FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
@@ -803,9 +809,9 @@ impl_rdp! {
             (_: jump_statement, st: _jump_statement()) => st,
             (_: selection_statement, st: _selection_statement()) => st,
             (_: iteration_statement, st: _iteration_statement()) => st,
-            (_: compound_statement, st: _multiple_statements()) => Ok(Expr::Block(try!(st).into_iter().collect())),
+            (_: compound_statement, st: _multiple_statements(), _: compound_statement_end) => Ok(Expr::Block(try!(st).into_iter().collect())),
             (_: function_definition, _: function_definition_header, &name: name, params: _function_definition_params(),
-                _: function_definition_param_end, _: compound_statement, body: _multiple_statements()) => {
+                _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Decl(Decl::GlobalFunction(name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
@@ -853,7 +859,7 @@ impl_rdp! {
             },
             (_: method_declaration, modifiers: _modifiers(), _: function_definition, _: function_definition_header,
                 &name: name, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement,
-                body: _multiple_statements()) => {
+                body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(ClassMember::Method(try!(modifiers), name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),

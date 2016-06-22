@@ -25,6 +25,7 @@ impl<'a> fmt::Display for Expr<'a> {
                 write!(f, "]")
             },
             Expr::Variable(ref var) => write!(f, "${}", var),
+            Expr::Reference(ref expr) => write!(f, "&{}", expr),
             Expr::Block(ref block) => {
                 try!(write!(f, "{{\n"));
                 let mut i_str = String::new();
@@ -65,14 +66,14 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
-            Expr::ObjProperty(ref obj, ref props) => {
+            Expr::ObjMember(ref obj, ref props) => {
                 try!(write!(f, "{}", obj));
                 for prop in props {
                     try!(write!(f, "->{}", prop));
                 }
                 Ok(())
             },
-            Expr::StaticProperty(ref obj, ref props) => {
+            Expr::StaticMember(ref obj, ref props) => {
                 try!(write!(f, "{}", obj));
                 for prop in props {
                     try!(write!(f, "::{}", prop));
@@ -112,6 +113,9 @@ impl<'a> fmt::Display for Expr<'a> {
             },
             Expr::Assign(ref obj, ref value) => {
                 write!(f, "{} = {};\n", obj, value)
+            },
+            Expr::AssignRef(ref obj, ref value) => {
+                write!(f, "{} = &({});\n", obj, value)
             },
             Expr::If(ref condition, ref case_true, ref case_else) => {
                 try!(write!(f, "if ({}) {}", condition, case_true));

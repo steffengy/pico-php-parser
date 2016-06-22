@@ -87,20 +87,20 @@ fn parse_expr_func_call() {
 
 #[test]
 fn parse_expr_object_property() {
-    assert_eq!(process_expr(r#"$obj->prop"#), Expr::ObjProperty(Box::new(Expr::Variable("obj".into())), vec![Expr::Identifier("prop".into())]));
-    assert_eq!(process_expr(r#"$obj->$a->b"#), Expr::ObjProperty(Box::new(Expr::Variable("obj".into())), vec![Expr::Variable("a".into()), Expr::Identifier("b".into())]));
-    assert_eq!(process_expr(r#"$obj->a->b->c->d"#), Expr::ObjProperty(Box::new(Expr::Variable("obj".into())),
+    assert_eq!(process_expr(r#"$obj->prop"#), Expr::ObjMember(Box::new(Expr::Variable("obj".into())), vec![Expr::Identifier("prop".into())]));
+    assert_eq!(process_expr(r#"$obj->$a->b"#), Expr::ObjMember(Box::new(Expr::Variable("obj".into())), vec![Expr::Variable("a".into()), Expr::Identifier("b".into())]));
+    assert_eq!(process_expr(r#"$obj->a->b->c->d"#), Expr::ObjMember(Box::new(Expr::Variable("obj".into())),
         vec![Expr::Identifier("a".into()), Expr::Identifier("b".into()), Expr::Identifier("c".into()), Expr::Identifier("d".into())])
     );
-    assert_eq!(process_expr("$obj->{$obj->b}->c"), Expr::ObjProperty(Box::new(Expr::Variable("obj".into())), vec![
-        Expr::ObjProperty(Box::new(Expr::Variable("obj".into())), vec![Expr::Identifier("b".into())]), Expr::Identifier("c".into())])
+    assert_eq!(process_expr("$obj->{$obj->b}->c"), Expr::ObjMember(Box::new(Expr::Variable("obj".into())), vec![
+        Expr::ObjMember(Box::new(Expr::Variable("obj".into())), vec![Expr::Identifier("b".into())]), Expr::Identifier("c".into())])
     );
-    assert_eq!(process_expr("$obj->{a->{b->c}->d}->e"), Expr::ObjProperty(Box::new(Expr::Variable("obj".into())), vec![
-        Expr::ObjProperty(Box::new(Expr::Identifier("a".into())), vec![
-            Expr::ObjProperty(Box::new(Expr::Identifier("b".into())), vec![Expr::Identifier("c".into())]), Expr::Identifier("d".into())
+    assert_eq!(process_expr("$obj->{a->{b->c}->d}->e"), Expr::ObjMember(Box::new(Expr::Variable("obj".into())), vec![
+        Expr::ObjMember(Box::new(Expr::Identifier("a".into())), vec![
+            Expr::ObjMember(Box::new(Expr::Identifier("b".into())), vec![Expr::Identifier("c".into())]), Expr::Identifier("d".into())
         ]), Expr::Identifier("e".into())
     ]));
-    assert_eq!(process_expr(r#"$obj->$a->b()"#), Expr::Call(Box::new(Expr::ObjProperty(
+    assert_eq!(process_expr(r#"$obj->$a->b()"#), Expr::Call(Box::new(Expr::ObjMember(
         Box::new(Expr::Variable("obj".into())),
         vec![Expr::Variable("a".into()), Expr::Identifier("b".into())]
     )), vec![]));
@@ -108,8 +108,8 @@ fn parse_expr_object_property() {
 
 #[test]
 fn parse_expr_static_property() {
-    assert_eq!(process_expr(r#"Obj::$test"#), Expr::StaticProperty(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("test".into())]));
-    assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticProperty(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
+    assert_eq!(process_expr(r#"Obj::$test"#), Expr::StaticMember(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("test".into())]));
+    assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticMember(Box::new(Expr::Identifier("Obj".into())), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
 }
 
 #[test]
@@ -164,4 +164,9 @@ fn parse_expr_array() {
 
 fn box_array_elem<'a>(a: Expr<'a>, b: Expr<'a>) -> (Box<Expr<'a>>, Box<Expr<'a>>) {
     (Box::new(a), Box::new(b))
+}
+
+#[test]
+fn parse_expr_reference() {
+    assert_eq!(process_expr("&$test"), Expr::Reference(Box::new(Expr::Variable("test".into()))));
 }
