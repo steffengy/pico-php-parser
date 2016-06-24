@@ -24,7 +24,7 @@ impl From<ParseIntError> for ParseError {
 }
 
 #[derive(Debug)]
-enum IdxExpr<'a> {
+pub enum IdxExpr<'a> {
     ArrayIdx(Expr<'a>),
     Call(Vec<Expr<'a>>),
     ObjMember(Expr<'a>),
@@ -526,11 +526,11 @@ impl_rdp! {
     }
 
     process! {
-        main(&self) -> Result<Vec<ParsedItem<'n>>, ParseError> {
+        main(&self) -> Result<Vec<ParsedItem<'input>>, ParseError> {
             (_: script, pfile: _script_sections()) => Ok(try!(pfile).into_iter().collect())
         }
 
-        _script_sections(&self) -> Result<LinkedList<ParsedItem<'n>>, ParseError> {
+        _script_sections(&self) -> Result<LinkedList<ParsedItem<'input>>, ParseError> {
             (_: script_section, t: _optional_text(), stmts: _multiple_statements(), t2: _optional_text(), next: _script_sections()) => {
                 let mut next = try!(next);
                 if let Some(text) = try!(t2) {
@@ -546,25 +546,25 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _optional_text(&self) -> Result<Option<&'n str>, ParseError> {
+        _optional_text(&self) -> Result<Option<&'input str>, ParseError> {
             (&t: text) => Ok(Some(t)),
             () => Ok(None),
         }
 
-        _expression(&self) -> Result<Expr<'n>, ParseError> {
+        _expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: yield_expression, e: _yield_expression()) => e,
             (_: expression, e: _expression()) => e,
         }
 
-        _constant_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _constant_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: expression, e: _expression()) => e,
         }
 
-        _yield_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _yield_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: assignment_expression, e: _assignment_expression()) => e,
         }
 
-        _assignment_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _assignment_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: conditional_expression, e: _conditional_expression()) => e,
             (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
@@ -574,11 +574,11 @@ impl_rdp! {
             }
         }
 
-        _conditional_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _conditional_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: binary_expression, e: _binary_expression()) => e,
         }
 
-        _binary_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _binary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: binary_expression, e: _binary_expression()) => e,
             (_: unary, _: increment_or_decrement_op, op, operand: _binary_expression()) => {
                 Ok(Expr::UnaryOp(match op.rule {
@@ -620,11 +620,11 @@ impl_rdp! {
             (_: unary_expression, e: _unary_expression()) => e
         }
 
-        _unary_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _unary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: postfix_expression, e: _postfix_expression()) => e,
         }
 
-        _postfix_expression_internal(&self) -> Result<Expr<'n>, ParseError> {
+        _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
             (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
             (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), args: _call_args(), _: function_call_end) => {
@@ -635,7 +635,7 @@ impl_rdp! {
             }
         }
 
-        _array_element_initializers(&self) -> Result<LinkedList<(Expr<'n>, Expr<'n>)>, ParseError> {
+        _array_element_initializers(&self) -> Result<LinkedList<(Expr<'input>, Expr<'input>)>, ParseError> {
             (_: array_element_initializer, kv: _array_element_key_value(), next: _array_element_initializers()) => {
                 let mut next = try!(next);
                 next.push_front(try!(kv));
@@ -644,12 +644,12 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _array_element_key_value(&self) -> Result<(Expr<'n>, Expr<'n>), ParseError> {
+        _array_element_key_value(&self) -> Result<(Expr<'input>, Expr<'input>), ParseError> {
             (_: element_key, k: _expression(), _: element_value, v: _expression()) => Ok((try!(k), try!(v))),
             (_: element_value, v: _expression()) => Ok((Expr::None, try!(v))),
         }
 
-        _postfix_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _postfix_expression(&self) -> Result<Expr<'input>, ParseError> {
             (e: _postfix_expression_idxs(), _: increment_or_decrement_op, op) => {
                 match op.rule {
                     Rule::op_increment => Ok(Expr::UnaryOp(Op::PostInc, Box::new(try!(e)))),
@@ -661,7 +661,7 @@ impl_rdp! {
         }
 
         // handle array index, property, fcall, static property, ...
-        _postfix_expression_idxs(&self) -> Result<Expr<'n>, ParseError> {
+        _postfix_expression_idxs(&self) -> Result<Expr<'input>, ParseError> {
             (pfe: _postfix_expression_internal(), pexprs: _post_exprs()) => {
                 // fold the given expressions (constructing proper call/indexing expressions)
                 let expr = try!(pexprs).into_iter().fold(try!(pfe), |initial, elem| {
@@ -698,7 +698,7 @@ impl_rdp! {
 
         // general operation for anything behaving like an subscription (call, property-fetch, ...)
         // anything following a postfix_expression
-        _post_exprs(&self) -> Result<LinkedList<IdxExpr<'n>>, ParseError> {
+        _post_exprs(&self) -> Result<LinkedList<IdxExpr<'input>>, ParseError> {
             (_: subscript, _: expression, e: _expression(), _: subscript_end, next: _post_exprs()) => {
                 let mut next = try!(next);
                 next.push_front(IdxExpr::ArrayIdx(try!(e)));
@@ -744,7 +744,7 @@ impl_rdp! {
         }
 
         // extract call args
-        _call_args(&self) -> Result<LinkedList<Expr<'n>>, ParseError> {
+        _call_args(&self) -> Result<LinkedList<Expr<'input>>, ParseError> {
             (_: argument_expression, _: assignment_expression, e: _assignment_expression(), next: _call_args()) => {
                 let mut next = try!(next);
                 let expr = try!(e);
@@ -754,7 +754,7 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _primary_expression(&self) -> Result<Expr<'n>, ParseError> {
+        _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: intrinsic, i: _intrinsic()) => i,
             (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Function(FunctionDecl {
@@ -775,18 +775,18 @@ impl_rdp! {
             (_: constant, e: _constant()) => e,
         }
 
-        _intrinsic(&self) -> Result<Expr<'n>, ParseError> {
+        _intrinsic(&self) -> Result<Expr<'input>, ParseError> {
             (_: intrinsic_construct, ic: _intrinsic_construct()) => ic,
         }
 
-        _intrinsic_construct(&self) -> Result<Expr<'n>, ParseError> {
+        _intrinsic_construct(&self) -> Result<Expr<'input>, ParseError> {
             (_: echo_intrinsic, args: _multiple_expressions()) => {
                 Ok(Expr::Echo(try!(args).into_iter().collect()))
             }
         }
 
         // as used for compound statements
-        _multiple_statements(&self) -> Result<LinkedList<Expr<'n>>, ParseError> {
+        _multiple_statements(&self) -> Result<LinkedList<Expr<'input>>, ParseError> {
             (_: statement, st: _statement(), next: _multiple_statements()) => {
                 let mut next = try!(next);
                 next.push_front(try!(st));
@@ -795,7 +795,7 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _multiple_expressions(&self) -> Result<LinkedList<Expr<'n>>, ParseError> {
+        _multiple_expressions(&self) -> Result<LinkedList<Expr<'input>>, ParseError> {
             (_: expression, ex: _expression(), next: _multiple_expressions()) => {
                 let mut next = try!(next);
                 next.push_front(try!(ex));
@@ -804,7 +804,7 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _statement(&self) -> Result<Expr<'n>, ParseError> {
+        _statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: expression_statement, e: _expression()) => e,
             (_: jump_statement, st: _jump_statement()) => st,
             (_: selection_statement, st: _selection_statement()) => st,
@@ -839,12 +839,12 @@ impl_rdp! {
             (_: statement, st: _statement()) => st,
         }
 
-        _class_extends(&self) -> Result<Vec<Cow<'n, str>>, ParseError> {
+        _class_extends(&self) -> Result<Vec<Cow<'input, str>>, ParseError> {
             (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(try!(qn).into_iter().collect()),
             () => Ok(vec![]),
         }
 
-        _class_members(&self) -> Result<LinkedList<ClassMember<'n>>, ParseError> {
+        _class_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
             (_: class_member_declaration, member: _class_member(), next: _class_members()) => {
                 let mut next = try!(next);
                 next.push_front(try!(member));
@@ -853,7 +853,7 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _class_member(&self) -> Result<ClassMember<'n>, ParseError> {
+        _class_member(&self) -> Result<ClassMember<'input>, ParseError> {
             (_: property_declaration, modifiers: _modifiers(), _: variable_name, &name: name, default_value: _opt_property_value()) => {
                 Ok(ClassMember::Property(try!(modifiers), name.into(), try!(default_value)))
             },
@@ -867,7 +867,7 @@ impl_rdp! {
             }
         }
 
-        _opt_property_value(&self) -> Result<Expr<'n>, ParseError> {
+        _opt_property_value(&self) -> Result<Expr<'input>, ParseError> {
             (_: property_initializer, _: constant_expression, e: _constant_expression()) => e,
             () => Ok(Expr::None)
         }
@@ -900,7 +900,7 @@ impl_rdp! {
             () => Ok(Modifiers(false, Visibility::None, ClassModifier::None))
         }
 
-        _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'n>>, ParseError> {
+        _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'input>>, ParseError> {
             (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), next: _namespace_use_clauses()) => {
                 let mut next = try!(next);
                 next.push_front(UseClause::QualifiedName(try!(qn)));
@@ -909,12 +909,12 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _jump_statement(&self) -> Result<Expr<'n>, ParseError> {
+        _jump_statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: return_statement, _: expression, e: _expression()) => Ok(Expr::Return(Box::new(try!(e)))),
             (_: return_statement) => Ok(Expr::Return(Box::new(Expr::None))),
         }
 
-        _iteration_statement(&self) -> Result<Expr<'n>, ParseError> {
+        _iteration_statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: while_statement, _: expression, e: _expression(), _: statement, st: _statement()) => {
                 Ok(Expr::While(Box::new(try!(e)), Box::new(try!(st))))
             },
@@ -927,27 +927,27 @@ impl_rdp! {
             }
         }
 
-        _foreach_key_value(&self) -> Result<(Expr<'n>, Expr<'n>), ParseError> {
+        _foreach_key_value(&self) -> Result<(Expr<'input>, Expr<'input>), ParseError> {
             (_: foreach_key, k: _expression(), _: foreach_value, v: _expression()) => Ok((try!(k), try!(v))),
             (_: foreach_value, v: _expression()) => Ok((Expr::None, try!(v))),
         }
 
-        _selection_statement(&self) -> Result<Expr<'n>, ParseError> {
+        _selection_statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: if_statement, ifstmt: _if_statement()) => ifstmt,
         }
 
-        _if_statement(&self) -> Result<Expr<'n>, ParseError> {
+        _if_statement(&self) -> Result<Expr<'input>, ParseError> {
             (exp: _expression(), _: statement, st: _statement(), elsec: _else_clause()) => {
                 Ok(Expr::If(Box::new(try!(exp)), Box::new(try!(st)), Box::new(try!(elsec))))
             }
         }
 
-        _else_clause(&self) -> Result<Expr<'n>, ParseError> {
+        _else_clause(&self) -> Result<Expr<'input>, ParseError> {
             (_: else_clause_1, st: _statement()) => Ok(try!(st)),
             () => Ok(Expr::None),
         }
 
-        _function_definition_params(&self) -> Result<LinkedList<ParamDefinition<'n>>, ParseError> {
+        _function_definition_params(&self) -> Result<LinkedList<ParamDefinition<'input>>, ParseError> {
             (_: parameter_declaration, _: variable_name, &name: name, next: _function_definition_params()) => {
                 let mut next = try!(next);
                 next.push_front(ParamDefinition { name: name.into() });
@@ -956,23 +956,23 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _constant(&self) -> Result<Expr<'n>, ParseError> {
+        _constant(&self) -> Result<Expr<'input>, ParseError> {
             (_: constant_true) => Ok(Expr::True),
             (_: constant_false) => Ok(Expr::False),
             (_: constant_null) => Ok(Expr::Null),
         }
 
-        _literal(&self) -> Result<Expr<'n>, ParseError> {
+        _literal(&self) -> Result<Expr<'input>, ParseError> {
             (_: integer_literal, e: _integer_literal()) => e,
             (_: string_literal, e: _string_literal()) => e,
         }
 
-        _integer_literal(&self) -> Result<Expr<'n>, ParseError> {
+        _integer_literal(&self) -> Result<Expr<'input>, ParseError> {
             (&i: decimal_literal) => Ok(Expr::Int(try!(i.parse()))),
             (_: octal_literal, &num: octal_digit_sequence) => Ok(Expr::Int(if num.len() > 0 { try!(i64::from_str_radix(num, 8)) } else { 0 }))
         }
 
-        _string_literal(&self) -> Result<Expr<'n>, ParseError> {
+        _string_literal(&self) -> Result<Expr<'input>, ParseError> {
             (_: double_quoted_string_literal, str_: _dq_string()) => Ok(Expr::String(try!(str_))),
             (_: single_quoted_string_literal, str_: _sq_string()) => Ok(Expr::String(try!(str_))),
         }
@@ -1033,7 +1033,7 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _qualified_name(&self) -> Result<Vec<Cow<'n, str>>, ParseError> {
+        _qualified_name(&self) -> Result<Vec<Cow<'input, str>>, ParseError> {
             (_: namespace_name_as_a_prefix, ns: _namespace_name_as_prefix(), &last: name) => {
                 let mut result = try!(ns);
                 result.push_back(last.into());
@@ -1042,11 +1042,11 @@ impl_rdp! {
             (&current: name) => Ok(vec![current.into()])
         }
 
-        _namespace_name_as_prefix(&self) -> Result<LinkedList<Cow<'n, str>>, ParseError> {
+        _namespace_name_as_prefix(&self) -> Result<LinkedList<Cow<'input, str>>, ParseError> {
             (e: _namespace_name_item()) => e,
         }
 
-        _namespace_name_item(&self) -> Result<LinkedList<Cow<'n, str>>, ParseError> {
+        _namespace_name_item(&self) -> Result<LinkedList<Cow<'input, str>>, ParseError> {
             (_: namespace_name_item, &current: name, next: _namespace_name_item()) => {
                 let mut next = try!(next);
                 next.push_front(current.into());
@@ -1073,13 +1073,13 @@ pub fn process_script(input: &str) -> Vec<ParsedItem> {
     assert!(parser.script());
     //println!("{:?} @{}", parser.queue(), parser.pos());
     assert!(parser.end());
-    parser.process().unwrap()
+    parser.main().unwrap()
 }
 
 pub fn process_stmt(input: &str) -> Expr {
     let mut parser = Rdp::new(StringInput::new(input));
     assert!(parser.statement());
-    println!("{:?} @{}", parser.queue(), parser.pos());
+    println!("{:?} @{}", parser.queue(), parser.input().pos());
     assert!(parser.end());
     parser._statement().unwrap()
 }
@@ -1087,7 +1087,7 @@ pub fn process_stmt(input: &str) -> Expr {
 pub fn process_expr(input: &str) -> Expr {
     let mut parser = Rdp::new(StringInput::new(input));
     assert!(parser.expression());
-    println!("{:?} @{}", parser.queue(), parser.pos());
+    println!("{:?} @{}", parser.queue(), parser.input().pos());
     assert!(parser.end());
     parser._expression().unwrap()
 }

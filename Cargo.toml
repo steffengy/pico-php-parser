@@ -5,4 +5,4 @@ authors = ["Steffen <steffen.butzer@outlook.com>"]
 license = "MIT"
 
 [dependencies]
-pest="0.2"
+pest="0.3"
