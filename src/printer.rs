@@ -127,6 +127,14 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::TernaryIf(ref condition, ref case_true, ref case_else) => {
+                try!(write!(f, "{}?", condition));
+                match **case_true {
+                    Expr::None => (),
+                    _ => try!(write!(f, "{}", case_true)),
+                }
+                write!(f, ":{}", case_else)
+            },
             Expr::While(ref condition, ref body) => {
                 write!(f, "while ({}) {}", condition, body)
             },

@@ -230,7 +230,7 @@ impl_rdp! {
             ["array"] | ["binary"] | ["bool"] | ["boolean"] | ["double"] | ["int"] | ["integer"] | ["float"] | ["object"] | ["real"] |
             ["string"] | ["unset"]
         }
-        // TODO: this shouldn't be ["$"] ~ expression (expression is too much for 1st subrule)
+        // TODO: this shouldn't be ["$"] ~ expression (expression is too much for this subrule)
         var_name_creation_expression    =  { (["$"] ~ expression) | (["$"] ~ ["{"] ~ expression ~ ["}"]) }
 
         // TODO: solve this similarily to (); stuff? Section: instanceof Operator
@@ -285,8 +285,12 @@ impl_rdp! {
 
         // Section: Conditional Operator
         conditional_expression          =  {
-            binary_expression |
-            (binary_expression ~ ["?"] ~ expression? ~ [":"] ~ conditional_expression)
+            ternary_expression |
+            binary_expression
+        }
+
+        ternary_expression              =  {
+            binary_expression ~ ["?"] ~ expression? ~ [":"] ~ conditional_expression
         }
 
         // Section: Coalesce Operator (TODO: in the documentation it's logical-inc-OR-expression, which doesn't exist. typo?)
@@ -557,6 +561,11 @@ impl_rdp! {
             (_: expression, e: _expression()) => e,
         }
 
+        _optional_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: expression, e: _expression()) => Ok(try!(e)),
+            () => Ok(Expr::None),
+        }
+
         _constant_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: expression, e: _expression()) => e,
         }
@@ -576,6 +585,9 @@ impl_rdp! {
         }
 
         _conditional_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: ternary_expression, _: binary_expression, e: _binary_expression(), then: _optional_expression(), _: conditional_expression, else_: _conditional_expression()) => {
+                Ok(Expr::TernaryIf(Box::new(try!(e)), Box::new(try!(then)), Box::new(try!(else_))))
+            },
             (_: binary_expression, e: _binary_expression()) => e,
         }
 

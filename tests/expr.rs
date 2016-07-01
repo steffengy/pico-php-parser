@@ -170,3 +170,8 @@ fn box_array_elem<'a>(a: Expr<'a>, b: Expr<'a>) -> (Box<Expr<'a>>, Box<Expr<'a>>
 fn parse_expr_reference() {
     assert_eq!(process_expr("&$test"), Expr::Reference(Box::new(Expr::Variable("test".into()))));
 }
+
+#[test]
+fn parse_expr_ternary() {
+    assert_eq!(process_expr("$test?true:false"), Expr::TernaryIf(Box::new(Expr::Variable("test".into())), Box::new(Expr::True), Box::new(Expr::False)));
+}
