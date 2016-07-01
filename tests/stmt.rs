@@ -98,11 +98,11 @@ fn parse_func_decl() {
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into() }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false }],
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into() }, ParamDefinition { name: "b".into() }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false }, ParamDefinition { name: "b".into(), as_ref: false }],
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
 }

@@ -440,8 +440,9 @@ impl_rdp! {
         function_definition_param_end   =  { [")"] }
         parameter_expression            = _{ parameter_declaration | variadic_parameter }
         parameter_declaration_list      = _{ parameter_expression ~ ([","] ~ parameter_expression)* }
-        parameter_declaration           =  { type_declaration? ~ ["&"]? ~ variable_name ~ default_argument_specifier? }
-        variadic_parameter              =  { type_declaration? ~ ["&"]? ~ ["..."] ~ variable_name }
+        parameter_declaration           =  { type_declaration? ~ parameter_as_ref? ~ variable_name ~ default_argument_specifier? }
+        parameter_as_ref                =  { ["&"] }
+        variadic_parameter              =  { type_declaration? ~ parameter_as_ref? ~ ["..."] ~ variable_name }
         return_type                     =  { ([":"] ~ type_declaration) | ([":"] ~ ["void"]) }
         type_declaration                =  { ["array"] | ["callable"] | scalar_type | qualified_name }
         scalar_type                     =  { ["bool"] | ["float"] | ["int"] | ["string"] }
@@ -947,10 +948,15 @@ impl_rdp! {
             () => Ok(Expr::None),
         }
 
+        _function_definition_param_as_ref(&self) -> Result<bool, ParseError> {
+            (_: parameter_as_ref) => Ok(true),
+            () => Ok(false),
+        }
+
         _function_definition_params(&self) -> Result<LinkedList<ParamDefinition<'input>>, ParseError> {
-            (_: parameter_declaration, _: variable_name, &name: name, next: _function_definition_params()) => {
+            (_: parameter_declaration, as_ref: _function_definition_param_as_ref(), _: variable_name, &name: name, next: _function_definition_params()) => {
                 let mut next = try!(next);
-                next.push_front(ParamDefinition { name: name.into() });
+                next.push_front(ParamDefinition { name: name.into(), as_ref: try!(as_ref) });
                 Ok(next)
             },
             () => Ok(LinkedList::new())

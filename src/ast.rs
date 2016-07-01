@@ -102,7 +102,8 @@ pub enum Expr<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParamDefinition<'a> {
-    pub name: Cow<'a, str>
+    pub name: Cow<'a, str>,
+    pub as_ref: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
