@@ -161,12 +161,13 @@ impl_rdp! {
         print_intrinsic                 =  { (["print"] ~ expression) | (["print"] ~ ["("] ~ expression ~ [")"]) }
         unset_intrinsic                 =  { ["unset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
         anonym_func_creation_expression =  {
-            ["static"]? ~ ["function"] ~ ["&"]? ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end
+            ["static"]? ~ ["function"] ~ function_ret_reference? ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end
             ~ return_type? ~ anonym_func_use_clause? ~ compound_statement
         }
         anonym_func_use_clause          =  { ["use"] ~ ["("] ~ use_variable_name_list ~ [")"] }
         use_variable_name_list          =  { use_variable_name_expr ~ ([","] ~ use_variable_name_expr)* }
-        use_variable_name_expr          =  { ["&"]? ~ variable_name }
+        use_variable_name_expr          =  { use_variable_byref? ~ variable_name }
+        use_variable_byref              =  { ["&"] }
 
         //Section: Postfix Operators
         postfix_expression_internal     = _{
@@ -191,7 +192,7 @@ impl_rdp! {
         array_creation_expression       =  { (["array"] ~ ["("] ~ array_initializer? ~ [")"]) | (["["] ~ array_initializer? ~ ["]"]) }
         array_initializer               = _{ array_initializer_list ~ [","]? }
         array_initializer_list          = _{ array_element_initializer ~  ([","] ~ array_element_initializer)* }
-        array_element_initializer       =  { (["&"]? ~ element_value) | (element_key ~ ["=>"] ~ ["&"]? ~ element_value) }
+        array_element_initializer       =  { (element_key ~ ["=>"] ~ element_value) | element_value }
         element_key                     =  { expression }
         element_value                   =  { expression }
         subscript                       =  { ["["] ~ expression? ~ subscript_end }
@@ -411,7 +412,7 @@ impl_rdp! {
         }
         foreach_collection_name         = _{ expression }
         foreach_key                     =  { expression ~ ["=>"] }
-        foreach_value                   =  { (["&"]? ~ expression) | list_intrinsic }
+        foreach_value                   =  { list_intrinsic | expression }
 
         // Section: Jump Statements
         jump_statement                  =  {  goto_statement | continue_statement | break_statement | return_statement | throw_statement }
@@ -440,7 +441,8 @@ impl_rdp! {
 
         // Section: Functions
         function_definition             =  { function_definition_header ~ compound_statement }
-        function_definition_header      =  { ["function"] ~ ["&"]? ~ name ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end ~ return_type? }
+        function_ret_reference          =  { ["&"] }
+        function_definition_header      =  { ["function"] ~ function_ret_reference? ~ name ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end ~ return_type? }
         function_definition_param_end   =  { [")"] }
         parameter_expression            = _{ parameter_declaration | variadic_parameter }
         parameter_declaration_list      = _{ parameter_expression ~ ([","] ~ parameter_expression)* }
@@ -473,8 +475,8 @@ impl_rdp! {
         method_declaration              =  { (method_modifiers? ~ function_definition) | (method_modifiers ~ function_definition_header ~ [";"]) }
         method_modifiers                = _{ method_modifier+ }
         method_modifier                 = _{ visibility_modifier | static_modifier | class_modifier }
-        constructor_declaration         =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__construct"] ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ compound_statement }
-        destructor_declaration          =  { method_modifiers ~ ["function"] ~ ["&"]? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
+        constructor_declaration         =  { method_modifiers ~ ["function"] ~ function_ret_reference? ~ ["__construct"] ~ ["("] ~ parameter_declaration_list? ~ [")"] ~ compound_statement }
+        destructor_declaration          =  { method_modifiers ~ ["function"] ~ function_ret_reference? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
 
         // Section: Interfaces
         interface_declaration           =  { ["interface"] ~ name ~ interface_base_clause? ~ ["{"] ~ interface_member_declarations? ~ ["}"] }
