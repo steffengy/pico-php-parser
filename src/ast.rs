@@ -92,11 +92,17 @@ pub enum Expr<'a> {
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     AssignRef(Box<Expr<'a>>, Box<Expr<'a>>),
-    /// If (condition.0) { Block.1 } else Else_Expr.2
+    /// If (condition=.0) { Block=.1 } else Else_Expr=.2
     If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     While(Box<Expr<'a>>, Box<Expr<'a>>),
     DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
     ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
+
+    /// switch (stmt=.0) [case item: body]+=.1
+    /// All item-cases for a body will be included in the first-member Vec
+    /// so basically we have a mapping from all-cases -> body in .1
+    /// TODO: should be desugared into an if-statement
+    Switch(Box<Expr<'a>>, Vec<(Vec<Expr<'a>>, Expr<'a>)>),
 
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used

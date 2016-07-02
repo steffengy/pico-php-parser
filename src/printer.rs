@@ -161,6 +161,19 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, "{}) {}", v, body)
             },
+            Expr::Switch(ref cond, ref cases) => {
+                try!(write!(f, "switch({}) {{", cond));
+                for case in cases {
+                    for conds in &case.0 {
+                        match *conds {
+                            Expr::None => try!(write!(f, "default:")),
+                            ref case => try!(write!(f, "case {}:", case)),
+                        }
+                    }
+                    try!(write!(f, "{}", case.1));
+                }
+                write!(f, "}}")
+            },
             Expr::Decl(ref decl) => write!(f, "{}\n", decl)
         }
     }

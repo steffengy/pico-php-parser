@@ -156,3 +156,15 @@ fn parse_break_statement() {
     assert_eq!(process_stmt("break;"), Expr::Break(1));
     assert_eq!(process_stmt("break 2;"), Expr::Break(2));
 }
+
+#[test]
+fn parse_switch_statement() {
+    assert_eq!(process_stmt(r#"switch ($test) { case 1: echo "1"; break; default: echo "2"; }"#), Expr::Switch(Box::new(Expr::Variable("test".into())),
+        vec![ (vec![Expr::Int(1)], Expr::Block(vec![Expr::Echo(vec![Expr::String("1".into())]), Expr::Break(1)])), (vec![Expr::None], Expr::Echo(vec![Expr::String("2".into())])) ]));
+    assert_eq!(process_stmt(r#"switch ($test) { case 1: echo "1"; default: echo "2"; }"#), Expr::Switch(Box::new(Expr::Variable("test".into())),
+        vec![ (vec![Expr::Int(1)], Expr::Echo(vec![Expr::String("1".into())])), (vec![Expr::None], Expr::Echo(vec![Expr::String("2".into())])) ]));
+    assert_eq!(process_stmt("switch ($test) { case 1: case 2: echo 1; }"), Expr::Switch(Box::new(Expr::Variable("test".into())),
+        vec![(vec![Expr::Int(1), Expr::Int(2)], Expr::Echo(vec![Expr::Int(1)])) ]));
+    assert_eq!(process_stmt("switch ($test) { case 1: case 2: case 3: case 4: echo 1; }"), Expr::Switch(Box::new(Expr::Variable("test".into())),
+        vec![(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3), Expr::Int(4)], Expr::Echo(vec![Expr::Int(1)])) ]));
+}

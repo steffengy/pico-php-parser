@@ -345,7 +345,7 @@ impl_rdp! {
         // Statements
         // Section: General
         statement                       =  {
-            compound_statement | labeled_statement | selection_statement | iteration_statement |
+            compound_statement | named_label_statement | selection_statement | iteration_statement |
             jump_statement | expression_statement | declare_statement | const_declaration | function_definition | class_declaration |
             interface_declaration | trait_declaration | namespace_definition | namespace_use_declaration |
             global_declaration | function_static_declaration
@@ -357,11 +357,9 @@ impl_rdp! {
         statement_list                  = _{ statement+ }
 
         // Section: Labeled Statement
-        labeled_statement               =  { named_label_statement | case_statement | default_statement }
-        named_label_statement           =  { name ~ [":"] ~ statement }
-        case_statement                  =  { ["case"] ~ expression ~ case_default_label_terminator ~ statement }
-        default_statement               =  { ["default"] ~ case_default_label_terminator ~ statement }
-        case_default_label_terminator   =  { [":"] | [";"] }
+        named_label_statement           =  { !(["default"] ~ case_label_terminator) ~ name ~ [":"] ~ statement }
+        case_statement                  =  { (["default"] ~ case_label_terminator) | (["case"] ~ expression ~ case_label_terminator) }
+        case_label_terminator           = _{ [":"] | [";"] }
 
         // Section: Expression Statements
         expression_statement            =  { expression? ~ [";"] }
@@ -376,13 +374,9 @@ impl_rdp! {
         else_clause_2                   =  { ["else"] ~ [":"] ~ statement_list }
         switch_statement                =  {
             ( ["switch"] ~ ["("] ~ expression ~ [")"] ) ~ (
-                ( ["{"] ~ case_statements? ~ ["}"] ) |
-                ( [":"] ~ case_statements? ~ ["endswitch"] ~ [";"] )
+                ( ["{"] ~ (case_statement+ ~ statement_list?)* ~ ["}"] ) |
+                ( [":"] ~ (case_statement+ ~ statement_list?)* ~ ["endswitch"] ~ [";"] )
             )
-        }
-        case_statements                 =  {
-            (case_statement ~ statement_list? ~ case_statements?) |
-            (default_statement ~ statement_list? ~ case_statements?)
         }
 
         // Section: Iteration Statements
@@ -782,7 +776,7 @@ impl_rdp! {
                 Ok(if qn.len() > 1 {
                     Expr::NsIdentifier(qn)
                 } else {
-                    Expr::Identifier(qn.pop().unwrap())
+                    Expr::Identifier(qn.remove(0))
                 })
             },
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
@@ -954,7 +948,34 @@ impl_rdp! {
             (_: foreach_value, v: _expression()) => Ok((Expr::None, try!(v))),
         }
 
+        _case_statements(&self) -> Result<LinkedList<(Vec<Expr<'input>>, Expr<'input>)>, ParseError> {
+            (_: case_statement, e: _optional_expression(), stmts: _multiple_statements(), next: _case_statements()) => {
+                let mut stmts = try!(stmts);
+                // convert the stmts to an appropriate expression
+                let new_stmt = match stmts.len() {
+                    0 => Expr::None,
+                    1 => stmts.pop_front().unwrap(),
+                    _ => Expr::Block(stmts.into_iter().collect()),
+                };
+                let e = try!(e);
+                let mut next = try!(next);
+                // recursion, collect all cases
+                match new_stmt {
+                    Expr::None if next.len() > 0 => {
+                        // no body, we can merge the case into a "parent"
+                        next.front_mut().unwrap().0.insert(0, e);
+                    },
+                    _ => next.push_front((vec![e], new_stmt)),
+                }
+                Ok(next)
+            },
+            () => Ok(LinkedList::new()),
+        }
+
         _selection_statement(&self) -> Result<Expr<'input>, ParseError> {
+            (_: switch_statement, _: expression, e: _expression(), cstmts: _case_statements()) => {
+                Ok(Expr::Switch(Box::new(try!(e)), try!(cstmts).into_iter().collect()))
+            },
             (_: if_statement, ifstmt: _if_statement()) => ifstmt,
         }
 
