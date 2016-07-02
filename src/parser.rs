@@ -415,7 +415,7 @@ impl_rdp! {
         foreach_value                   =  { list_intrinsic | expression }
 
         // Section: Jump Statements
-        jump_statement                  =  {  goto_statement | continue_statement | break_statement | return_statement | throw_statement }
+        jump_statement                  =  { goto_statement | continue_statement | break_statement | return_statement | throw_statement }
         goto_statement                  =  { ["goto"] ~ name ~ [";"] }
         continue_statement              =  { ["continue"] ~ breakout_level? ~ [";"] }
         breakout_level                  =  { integer_literal }
@@ -924,7 +924,14 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
+        _breakout_level(&self) -> Result<usize, ParseError> {
+            (_: breakout_level, _: integer_literal, val: _integer_literal()) => Ok(try!(val) as usize),
+            () => Ok(1),
+        }
+
         _jump_statement(&self) -> Result<Expr<'input>, ParseError> {
+            (_: break_statement, lvl: _breakout_level()) => Ok(Expr::Break(try!(lvl))),
+            (_: continue_statement, lvl: _breakout_level()) => Ok(Expr::Continue(try!(lvl))),
             (_: return_statement, _: expression, e: _expression()) => Ok(Expr::Return(Box::new(try!(e)))),
             (_: return_statement) => Ok(Expr::Return(Box::new(Expr::None))),
         }
@@ -983,13 +990,13 @@ impl_rdp! {
         }
 
         _literal(&self) -> Result<Expr<'input>, ParseError> {
-            (_: integer_literal, e: _integer_literal()) => e,
+            (_: integer_literal, e: _integer_literal()) => Ok(Expr::Int(try!(e))),
             (_: string_literal, e: _string_literal()) => e,
         }
 
-        _integer_literal(&self) -> Result<Expr<'input>, ParseError> {
-            (&i: decimal_literal) => Ok(Expr::Int(try!(i.parse()))),
-            (_: octal_literal, &num: octal_digit_sequence) => Ok(Expr::Int(if num.len() > 0 { try!(i64::from_str_radix(num, 8)) } else { 0 }))
+        _integer_literal(&self) -> Result<i64, ParseError> {
+            (&i: decimal_literal) => Ok(try!(i.parse())),
+            (_: octal_literal, &num: octal_digit_sequence) => Ok(if num.len() > 0 { try!(i64::from_str_radix(num, 8)) } else { 0 })
         }
 
         _string_literal(&self) -> Result<Expr<'input>, ParseError> {

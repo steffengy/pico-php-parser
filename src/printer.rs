@@ -59,6 +59,18 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::Break(ref amount) => {
+                match *amount {
+                    1 => write!(f, "break;"),
+                    _ => write!(f, "break {};", amount),
+                }
+            },
+            Expr::Continue(ref amount) => {
+                match *amount {
+                    1 => write!(f, "continue;"),
+                    _ => write!(f, "continue {};", amount),
+                }
+            },
             Expr::ArrayIdx(ref obj, ref items) => {
                 try!(write!(f, "{}", obj));
                 for item in items {

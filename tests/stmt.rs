@@ -144,3 +144,15 @@ fn parse_namespace_decl() {
 fn parse_use_statement() {
     assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(vec!["Test".into()]) ]));
 }
+
+#[test]
+fn parse_continue_statement() {
+    assert_eq!(process_stmt("continue;"), Expr::Continue(1));
+    assert_eq!(process_stmt("continue 2;"), Expr::Continue(2));
+}
+
+#[test]
+fn parse_break_statement() {
+    assert_eq!(process_stmt("break;"), Expr::Break(1));
+    assert_eq!(process_stmt("break 2;"), Expr::Break(2));
+}

@@ -78,6 +78,8 @@ pub enum Expr<'a> {
     Use(Vec<UseClause<'a>>),
     Echo(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
+    Break(usize),
+    Continue(usize),
 
     ArrayIdx(Box<Expr<'a>>, Vec<Expr<'a>>),
     ObjMember(Box<Expr<'a>>, Vec<Expr<'a>>),
