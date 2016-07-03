@@ -50,14 +50,14 @@ impl_rdp! {
         new_line                        =  { (["\r"] ~ ["\n"]) | ["\r"] | ["\n"] }
 
         // Section: Program Structure
-        script                          =  { script_section+ }
+        script                          =  { soi ~ script_section+ ~ eoi }
         start_tag                       = _{ ["<?php"] | ["<?="] }
         end_tag                         = _{ ["?>"] }
         script_section                  =  { text? ~ start_tag ~ statement_list? ~ end_tag? ~ text? }
         text                            =  { (!start_tag ~ any)+ }
 
         // Section: Names
-        variable_name                   = { ["$"] ~ name }
+        variable_name                   =  { ["$"] ~ name }
         name                            = @{ nondigit_silent ~ (digit_silent | nondigit_silent)* } //TODO: U+007f–U+00ff (name_nondigit)
 
         //literal translation from reference: (does not work)
@@ -1119,7 +1119,7 @@ fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
 pub fn process_script(input: &str) -> Vec<ParsedItem> {
     let mut parser = Rdp::new(StringInput::new(input));
     assert!(parser.script());
-    //println!("{:?} @{}", parser.queue(), parser.pos());
+    println!("{:?} @{}", parser.queue(), parser.input().pos());
     assert!(parser.end());
     parser.main().unwrap()
 }
