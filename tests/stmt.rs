@@ -121,7 +121,11 @@ fn parse_class_decl() {
 fn parse_class_properties() {
     assert_eq!(process_stmt("class Test { public $test; }"), Expr::Decl(Decl::Class(ClassDecl {
         name: "Test".into(), base_class: None,
-        members: vec![ClassMember::Property(Modifiers(false, Visibility::Public, ClassModifier::None), "test".into(), Expr::None)]
+        members: vec![ClassMember::Property(Modifiers(false, Visibility::Public, ClassModifier::None), "test".into(), Expr::None)],
+    })));
+    assert_eq!(process_stmt("class Test { protected $ab = []; }"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None,
+        members: vec![ClassMember::Property(Modifiers(false, Visibility::Protected, ClassModifier::None), "ab".into(), Expr::Array(vec![])) ],
     })));
 }
 

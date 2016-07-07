@@ -131,7 +131,7 @@ impl_rdp! {
         variable_name_list              =  { expression | (variable_name_list ~ [","] ~ expression) }
 
         // Section: Expressions
-        // In the reference this contains "", we use "array_creation_expression" to prevent infinite recursion
+        // In the reference this contains "constant_expression", we use "array_creation_expression" to prevent infinite recursion
         primary_expression              =  {
             intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
             array_creation_expression |
@@ -564,6 +564,9 @@ impl_rdp! {
         }
 
         _constant_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: array_creation_expression, values: _array_element_initializers()) => {
+                Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
+            },
             (_: expression, e: _expression()) => e,
         }
 
