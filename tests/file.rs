@@ -3,6 +3,15 @@ extern crate pesty_php;
 use pesty_php::*;
 
 #[test]
+fn parse_simple_file_without_end_tag() {
+    let result = vec![ParsedItem::CodeBlock(
+        vec![Expr::Echo(vec![Expr::String("test".into())])]
+    )];
+    assert_eq!(process_script("<?php echo \"test\";"), result);
+    assert_eq!(process_script("<?php echo \"test\";\n"), result);
+}
+
+#[test]
 fn parse_simple_file_echos() {
     assert_eq!(process_script("before<?php echo \"test\"; ?>after1<?php echo \"end\"; ?>end"), vec![
         ParsedItem::Text("before".into()),

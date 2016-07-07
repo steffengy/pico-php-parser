@@ -504,10 +504,11 @@ impl_rdp! {
             )
         }
         namespace_use_declaration       =  {
-            (["use"] ~ namespace_function_or_const? ~ namespace_use_clauses ~ [";"]) |
-            (["use"] ~ namespace_function_or_const ~ ["\\"]? ~ namespace_name ~ ["\\"]) |
-            (["{"] ~ namespace_use_group_clauses_1 ~ ["}"]) |
-            (["use"] ~ ["\\"]? ~ namespace_name ~ ["\\"] ~ ["{"] ~ namespace_use_group_clauses_2 ~ ["}"] ~ [";"])
+            ["use"] ~ (
+                (namespace_function_or_const? ~ namespace_use_clauses) |
+                (namespace_function_or_const ~ ["\\"]? ~ namespace_name ~ ["\\"] ~ ["{"] ~ namespace_use_group_clauses_1 ~ ["}"]) |
+                (["\\"]? ~ namespace_name ~ ["\\"] ~ ["{"] ~ namespace_use_group_clauses_2 ~ ["}"])
+            ) ~ [";"]
         }
         namespace_use_clauses           = _{ namespace_use_clause ~ ([","] ~ namespace_use_clause)* }
         namespace_use_clause            =  { qualified_name ~ namespace_aliasing_clause? }
@@ -909,10 +910,17 @@ impl_rdp! {
             () => Ok(Modifiers(false, Visibility::None, ClassModifier::None))
         }
 
+        _namespace_aliasing_clause(&self) -> Result<Option<Cow<'input, str>>, ParseError> {
+            (_: namespace_aliasing_clause, &name: name) => {
+                Ok(Some(name.into()))
+            },
+            () => Ok(None),
+        }
+
         _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'input>>, ParseError> {
-            (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), next: _namespace_use_clauses()) => {
+            (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), asc: _namespace_aliasing_clause(), next: _namespace_use_clauses()) => {
                 let mut next = try!(next);
-                next.push_front(UseClause::QualifiedName(try!(qn)));
+                next.push_front(UseClause::QualifiedName(try!(qn), try!(asc)));
                 Ok(next)
             },
             () => Ok(LinkedList::new())

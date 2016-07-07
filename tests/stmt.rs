@@ -142,7 +142,11 @@ fn parse_namespace_decl() {
 
 #[test]
 fn parse_use_statement() {
-    assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(vec!["Test".into()]) ]));
+    assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(vec!["Test".into()], None) ]));
+    assert_eq!(process_stmt("use Ab\\Cd\\Ef\\Gh\\Ij as Ga;"), Expr::Use(vec![UseClause::QualifiedName(
+        vec!["Ab".into(), "Cd".into(), "Ef".into(), "Gh".into(), "Ij".into()],
+        Some("Ga".into()))
+    ]));
 }
 
 #[test]

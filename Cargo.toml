@@ -5,4 +5,4 @@ authors = ["Steffen <steffen.butzer@outlook.com>"]
 license = "MIT"
 
 [dependencies]
-pest = { git = "https://github.com/dragostis/pest", branch = "v0.4.0", rev="9d43463952cc80bbb074c68c83af27a9bf9306de" }
+pest = { git = "https://github.com/dragostis/pest", branch = "v0.4.0" }

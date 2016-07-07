@@ -182,8 +182,12 @@ impl<'a> fmt::Display for Expr<'a> {
 impl<'a> fmt::Display for UseClause<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            UseClause::QualifiedName(ref parts) => {
-                write!(f, "{}", parts.join("\\"))
+            UseClause::QualifiedName(ref parts, ref asc) => {
+                let joined_parts = parts.join("\\");
+                match *asc {
+                    None => write!(f, "{}", joined_parts),
+                    Some(ref x) => write!(f, "{} as {}", joined_parts, x),
+                }
             }
         }
     }

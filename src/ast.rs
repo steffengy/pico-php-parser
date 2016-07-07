@@ -6,10 +6,12 @@ pub enum ParsedItem<'a> {
     CodeBlock(Vec<Expr<'a>>),
 }
 
+pub type UseAlias<'a> = Option<Cow<'a, str>>;
+
 //TODO: maybe use Path for this too?
 #[derive(Clone, Debug, PartialEq)]
 pub enum UseClause<'a> {
-    QualifiedName(Vec<Cow<'a, str>>),
+    QualifiedName(Vec<Cow<'a, str>>, UseAlias<'a>),
 }
 
 //TODO: use this in more places instead of Vec<Cow<..>>
