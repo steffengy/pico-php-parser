@@ -98,11 +98,11 @@ fn parse_func_decl() {
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into(), as_ref: false }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }],
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into(), as_ref: false }, ParamDefinition { name: "b".into(), as_ref: false }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }, ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: Expr::None }],
         body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
     ));
 }
@@ -135,6 +135,13 @@ fn parse_class_methods() {
         name: "Test".into(), base_class: None,
         members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "a".into(), FunctionDecl {
             params: vec![], body: vec![Expr::Call(Box::new(Expr::Identifier("run".into())), vec![])]
+        })]
+    })));
+    assert_eq!(process_stmt("class Test { public function __construct(array $param1 = []) { $this->param = $param1; } }"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None,
+        members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "__construct".into(), FunctionDecl {
+            params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Expr::Array(vec![]) }],
+            body: vec![Expr::Assign(Box::new(Expr::ObjMember(Box::new(Expr::Variable("this".into())), vec![Expr::Identifier("param".into())])), Box::new(Expr::Variable("param1".into()))) ]
         })]
     })));
 }

@@ -116,9 +116,23 @@ pub enum Expr<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum Ty {
+    Array,
+    Callable,
+    Bool,
+    Float,
+    Int,
+    String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParamDefinition<'a> {
     pub name: Cow<'a, str>,
     pub as_ref: bool,
+    /// The type of the parameter
+    pub ty: Option<Ty>,
+    /// The default value for the parameter
+    pub default: Expr<'a>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

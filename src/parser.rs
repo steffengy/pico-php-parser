@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{Expr, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, UseClause, Visibility};
+use ast::{Expr, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, Ty, UseClause, Visibility};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -444,8 +444,15 @@ impl_rdp! {
         parameter_as_ref                =  { ["&"] }
         variadic_parameter              =  { type_declaration? ~ parameter_as_ref? ~ ["..."] ~ variable_name }
         return_type                     =  { ([":"] ~ type_declaration) | ([":"] ~ ["void"]) }
-        type_declaration                =  { ["array"] | ["callable"] | scalar_type | qualified_name }
-        scalar_type                     =  { ["bool"] | ["float"] | ["int"] | ["string"] }
+        type_array                      =  { ["array"] }
+        type_callable                   =  { ["callable"] }
+        type_declaration                =  { type_declaration_ty | qualified_name }
+        type_declaration_ty             =  { type_array | type_callable | scalar_type }
+        type_bool                       =  { ["bool"] }
+        type_float                      =  { ["float"] }
+        type_int                        =  { ["int"] }
+        type_string                     =  { ["string"] }
+        scalar_type                     = _{ type_bool | type_float | type_int | type_string }
         default_argument_specifier      =  { ["="] ~ constant_expression }
 
         // Section: Classes
@@ -1006,10 +1013,31 @@ impl_rdp! {
             () => Ok(false),
         }
 
+        _function_definition_param_ty(&self) -> Result<Option<Ty>, ParseError> {
+            (_: type_declaration, _: type_declaration_ty, ty) => {
+                Ok(Some(match ty.rule {
+                    Rule::type_array => Ty::Array,
+                    Rule::type_string => Ty::String,
+                    Rule::type_int => Ty::Int,
+                    Rule::type_float => Ty::Float,
+                    Rule::type_bool => Ty::Bool,
+                    Rule::type_callable => Ty::Callable,
+                    _ => unreachable!(),
+                }))
+            },
+            () => Ok(None),
+        }
+
+        _function_definition_param_default(&self) -> Result<Expr<'input>, ParseError> {
+            (_: default_argument_specifier, _: constant_expression, e: _constant_expression()) => e,
+            () => Ok(Expr::None),
+        }
+
         _function_definition_params(&self) -> Result<LinkedList<ParamDefinition<'input>>, ParseError> {
-            (_: parameter_declaration, as_ref: _function_definition_param_as_ref(), _: variable_name, &name: name, next: _function_definition_params()) => {
+            (_: parameter_declaration, ty: _function_definition_param_ty(), as_ref: _function_definition_param_as_ref(), _: variable_name,
+                &name: name, default: _function_definition_param_default(), next: _function_definition_params()) => {
                 let mut next = try!(next);
-                next.push_front(ParamDefinition { name: name.into(), as_ref: try!(as_ref) });
+                next.push_front(ParamDefinition { name: name.into(), as_ref: try!(as_ref), ty: try!(ty), default: try!(default) });
                 Ok(next)
             },
             () => Ok(LinkedList::new())
