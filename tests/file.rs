@@ -9,6 +9,7 @@ fn parse_simple_file_without_end_tag() {
     )];
     assert_eq!(process_script("<?php echo \"test\";"), result);
     assert_eq!(process_script("<?php echo \"test\";\n"), result);
+    assert_eq!(process_script("<?php echo \"test\";\n"), result);
 }
 
 #[test]
@@ -28,7 +29,7 @@ fn parse_simple_fn_decl() {
         ParsedItem::CodeBlock(vec![Expr::Decl(Decl::GlobalFunction("hello_world".into(), FunctionDecl {
                 params: vec![],
                 body: vec![Expr::Echo(vec![Expr::String("hello world".into())])]
-            })), Expr::Call(Box::new(Expr::Identifier("hello_world".into())), vec![])
+            })), Expr::Call(Box::new(Expr::Path(Path::Identifier("hello_world".into()))), vec![])
         ])
     ]);
 }

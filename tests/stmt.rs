@@ -28,7 +28,7 @@ fn parse_stmt_assignment() {
 #[test]
 fn parse_stmt_if_while() {
     let expr_var = Expr::Variable("a".into());
-    let block_stmt = Expr::Call(Box::new(Expr::Identifier("b".into())), vec![]);
+    let block_stmt = Expr::Call(Box::new(Expr::Path(Path::Identifier("b".into()))), vec![]);
     let block_expr = Expr::Block(vec![block_stmt.clone()]);
     let args = [
         ("if", Expr::If(Box::new(expr_var.clone()), Box::new(block_expr.clone()), Box::new(Expr::None))),
@@ -49,20 +49,20 @@ fn parse_stmt_if_while() {
 #[test]
 fn parse_stmt_if_else() {
     let make_result = |block_expr, else_expr| Expr::If(Box::new(Expr::Variable("a".into())), Box::new(block_expr), Box::new(else_expr));
-    let main_call_expr = Expr::Call(Box::new(Expr::Identifier("a".into())), vec![]);
+    let main_call_expr = Expr::Call(Box::new(Expr::Path(Path::Identifier("a".into()))), vec![]);
     let block_expr = Expr::Block(vec![main_call_expr.clone()]);
-    let call_expr = Expr::Call(Box::new(Expr::Identifier("b".into())), vec![]);
+    let call_expr = Expr::Call(Box::new(Expr::Path(Path::Identifier("b".into()))), vec![]);
     let else_expr = Expr::Block(vec![call_expr.clone()]);
 
     assert_eq!(process_stmt("if ($a) { a(); } else { b(); }"), make_result(block_expr, else_expr));
     assert_eq!(process_stmt("if ($a) a(); else b();"), make_result(main_call_expr, call_expr));
     assert_eq!(process_stmt("if ($a) a(); else if ($b) b(); else c();"), Expr::If(
         Box::new(Expr::Variable("a".into())),
-        Box::new(Expr::Call(Box::new(Expr::Identifier("a".into())), vec![])),
+        Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("a".into()))), vec![])),
         Box::new(
             Expr::If(Box::new(Expr::Variable("b".into())),
-                Box::new(Expr::Call(Box::new(Expr::Identifier("b".into())), vec![])),
-                Box::new(Expr::Call(Box::new(Expr::Identifier("c".into())), vec![]))
+                Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("b".into()))), vec![])),
+                Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![]))
             )
         )
     ));
@@ -71,8 +71,8 @@ fn parse_stmt_if_else() {
 #[test]
 fn parse_stmt_do_while() {
     assert_eq!(process_stmt("do { test(); } while(count($a));"), Expr::DoWhile(
-        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Identifier("test".into())), vec![])])),
-        Box::new(Expr::Call(Box::new(Expr::Identifier("count".into())), vec![Expr::Variable("a".into())]))
+        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![])])),
+        Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("count".into()))), vec![Expr::Variable("a".into())]))
     ));
 }
 
@@ -82,28 +82,28 @@ fn parse_stmt_foreach() {
         Box::new(Expr::Variable("test".into())),
         Box::new(Expr::None), // key
         Box::new(Expr::Variable("v".into())), // value
-        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])])) //body
+        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])])) //body
     ));
     assert_eq!(process_stmt("foreach ($test as $k => $v) { ok(); }"), Expr::ForEach(
         Box::new(Expr::Variable("test".into())),
         Box::new(Expr::Variable("k".into())), // key
         Box::new(Expr::Variable("v".into())), // value
-        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])])) //body
+        Box::new(Expr::Block(vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])])) //body
     ));
 }
 
 #[test]
 fn parse_func_decl() {
     assert_eq!(process_stmt("function test() { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }],
-        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])] })
     ));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }, ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: Expr::None }],
-        body: vec![Expr::Call(Box::new(Expr::Identifier("ok".into())), vec![])] })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])] })
     ));
 }
 
@@ -113,7 +113,7 @@ fn parse_class_decl() {
         name: "Test".into(), base_class: None, members: vec![]
     })));
     assert_eq!(process_stmt("class Test extends Abc\\Test2 {}"), Expr::Decl(Decl::Class(ClassDecl {
-        name: "Test".into(), base_class: Some(Path::NamespacedClass("Abc".into(), "Test2".into())), members: vec![]
+        name: "Test".into(), base_class: Some(Path::NsIdentifier("Abc".into(), "Test2".into())), members: vec![]
     })));
 }
 
@@ -134,17 +134,51 @@ fn parse_class_methods() {
     assert_eq!(process_stmt("class Test { public function a() { run(); } }"), Expr::Decl(Decl::Class(ClassDecl {
         name: "Test".into(), base_class: None,
         members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "a".into(), FunctionDecl {
-            params: vec![], body: vec![Expr::Call(Box::new(Expr::Identifier("run".into())), vec![])]
+            params: vec![], body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("run".into()))), vec![])]
         })]
     })));
     assert_eq!(process_stmt("class Test { public function __construct(array $param1 = []) { $this->param = $param1; } }"), Expr::Decl(Decl::Class(ClassDecl {
         name: "Test".into(), base_class: None,
         members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "__construct".into(), FunctionDecl {
             params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Expr::Array(vec![]) }],
-            body: vec![Expr::Assign(Box::new(Expr::ObjMember(Box::new(Expr::Variable("this".into())), vec![Expr::Identifier("param".into())])), Box::new(Expr::Variable("param1".into()))) ]
+            body: vec![Expr::Assign(Box::new(Expr::ObjMember(Box::new(Expr::Variable("this".into())), vec![
+                Expr::Path(Path::Identifier("param".into())) ])), Box::new(Expr::Variable("param1".into())))
+            ]
         })]
     })));
 }
+
+/*#[test]
+fn parse_class_use() {
+    assert_eq!(process_stmt("class Test { use Abc; }"), Expr::None);
+}
+*/
+
+/*
+#[test]
+fn parse_stmt_closure_use() {
+    assert_eq!(process_stmt("return function () use ($t) {};"), Expr::None);
+}
+*/
+/*
+fn parse_stmt_insteadof() {
+    assert_eq!(process_stmt("if ($result instanceof Response) {
+            return $result;
+    }"), Expr::None);
+}
+*/
+
+/*
+#[test]
+fn debug() {
+    assert_eq!(process_stmt("try {
+            echo \"ok\";
+        } catch (Exception $e) {
+            return false;
+        }"
+    ), Expr::None);
+}
+*/
 
 #[test]
 fn parse_namespace_decl() {
@@ -153,9 +187,9 @@ fn parse_namespace_decl() {
 
 #[test]
 fn parse_use_statement() {
-    assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(vec!["Test".into()], None) ]));
+    assert_eq!(process_stmt("use Test;"), Expr::Use(vec![UseClause::QualifiedName(Path::Identifier("Test".into()), None) ]));
     assert_eq!(process_stmt("use Ab\\Cd\\Ef\\Gh\\Ij as Ga;"), Expr::Use(vec![UseClause::QualifiedName(
-        vec!["Ab".into(), "Cd".into(), "Ef".into(), "Gh".into(), "Ij".into()],
+        Path::NsIdentifier("Ab\\Cd\\Ef\\Gh".into(), "Ij".into()),
         Some("Ga".into()))
     ]));
 }
@@ -188,5 +222,5 @@ fn parse_switch_statement() {
 fn parse_list_statement() {
     assert_eq!(process_stmt("list($a, $b) = test();"), Expr::Assign(Box::new(Expr::List(
         vec![(Expr::None, Expr::Variable("a".into())), (Expr::None, Expr::Variable("b".into()))]
-    )), Box::new(Expr::Call(Box::new(Expr::Identifier("test".into())), vec![]))));
+    )), Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![]))));
 }
