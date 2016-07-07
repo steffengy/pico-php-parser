@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{Expr, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, Ty, UseClause, Visibility};
+use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, Ty, UseClause, Visibility};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -224,9 +224,12 @@ impl_rdp! {
         */
 
         // Section: Unary Operators
-        unary_expression                =  {
+        unary_expression_internal       = _{
             postfix_expression | error_control_expression |
             shell_command_expression | cast_expression | var_name_creation_expression
+        }
+        unary_expression                =  {
+            unary_expression_internal ~ instanceof_expression?
         }
         unary_operator                  =  { op_add | op_sub | op_not | ["~"] }
         error_control_expression        =  { ["@"] ~ expression }
@@ -239,10 +242,9 @@ impl_rdp! {
         // TODO: this shouldn't be ["$"] ~ expression (expression is too much for this subrule)
         var_name_creation_expression    =  { (["$"] ~ expression) | (["$"] ~ ["{"] ~ expression ~ ["}"]) }
 
-        // TODO: solve this similarily to (); stuff? Section: instanceof Operator
-        //instanceof_expression           =  { unary_expression | (instanceof_subject ~ ["instanceof"] ~ instanceof_type_designator) }
-        //instanceof_subject              =  { expression }
-        //instanceof_type_designator      =  { qualified_name | expression }
+        // Section: instanceof Operator
+        instanceof_expression           =  { ["instanceof"] ~ instanceof_type_designator }
+        instanceof_type_designator      = _{ qualified_name | variable_name }
 
         // Unary/Binary Operators from various sections rewritten to use precedence-climbing
         _exponentiation                 = _{
@@ -351,7 +353,7 @@ impl_rdp! {
         // Section: General
         statement                       =  {
             compound_statement | named_label_statement | selection_statement | iteration_statement |
-            jump_statement | expression_statement | declare_statement | const_declaration | function_definition | class_declaration |
+            jump_statement | expression_statement | try_statement | declare_statement | const_declaration | function_definition | class_declaration |
             interface_declaration | trait_declaration | namespace_definition | namespace_use_declaration |
             global_declaration | function_static_declaration
         }
@@ -423,8 +425,7 @@ impl_rdp! {
         throw_statement                 =  { ["throw"] ~ expression ~ [";"] }
 
         // Section: try Statement
-        try_statement                   =  { (["try"] ~ compound_statement) ~ ((catch_clauses ~ finally_clause?) | finally_clause) }
-        catch_clauses                   =  { catch_clause | (catch_clauses ~ catch_clause) }
+        try_statement                   =  { (["try"] ~ compound_statement) ~ (catch_clause* ~ finally_clause?) }
         catch_clause                    =  { ["catch"] ~ ["("] ~ qualified_name ~ variable_name ~ [")"] ~ compound_statement }
         finally_clause                  =  { ["finally"] ~ compound_statement }
 
@@ -645,8 +646,25 @@ impl_rdp! {
             (_: unary_expression, e: _unary_expression()) => e
         }
 
+        _optional_instanceof_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: instanceof_expression, _: qualified_name, qn: _qualified_name()) => {
+                Ok(Expr::BinaryOp(Op::Instanceof, Box::new(Expr::None), Box::new(Expr::Path(qualified_name_to_path(try!(qn))))))
+            },
+            (_: instanceof_expression, _: variable_name, &name: name) => {
+                Ok(Expr::BinaryOp(Op::Instanceof, Box::new(Expr::None), Box::new(Expr::Variable(name.into()))))
+            },
+            () => Ok(Expr::None),
+        }
+
         _unary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: postfix_expression, e: _postfix_expression()) => e,
+            (_: postfix_expression, e: _postfix_expression(), o: _optional_instanceof_expression()) => {
+                let o = try!(o);
+                match o {
+                    Expr::None => e,
+                    Expr::BinaryOp(Op::Instanceof, _, ty) => Ok(Expr::BinaryOp(Op::Instanceof, Box::new(try!(e)), ty)),
+                    _ => unreachable!(),
+                }
+            }
         }
 
         _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
@@ -741,7 +759,7 @@ impl_rdp! {
             },
             (_: member_selection, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::ObjMember(Expr::Identifier(name.into())));
+                next.push_front(IdxExpr::ObjMember(Expr::Path(Path::Identifier(name.into()))));
                 Ok(next)
             },
             (_: member_selection, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
@@ -757,7 +775,7 @@ impl_rdp! {
             },
             (_: scope_resolution, &name: name, next: _post_exprs()) => {
                 let mut next = try!(next);
-                next.push_front(IdxExpr::StaticMember(Expr::Identifier(name.into())));
+                next.push_front(IdxExpr::StaticMember(Expr::Path(Path::Identifier(name.into()))));
                 Ok(next)
             },
             (_: scope_resolution, _: curly_braced_expression, _: expression, e: _expression(), _: curly_braced_expression_end, next: _post_exprs()) => {
@@ -788,12 +806,7 @@ impl_rdp! {
                 }))
             },
             (_: qualified_name, qn: _qualified_name()) => {
-                let mut qn = try!(qn);
-                Ok(if qn.len() > 1 {
-                    Expr::NsIdentifier(qn)
-                } else {
-                    Expr::Identifier(qn.remove(0))
-                })
+                Ok(Expr::Path(qualified_name_to_path(try!(qn))))
             },
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
             (_: literal, e: _literal()) => e,
@@ -860,11 +873,37 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
+        _catch_clauses(&self) -> Result<LinkedList<CatchClause<'input>>, ParseError> {
+            (_: catch_clause, _: qualified_name, qn: _qualified_name(), _: variable_name, &n: name, _: compound_statement,
+                st: _multiple_statements(), _: compound_statement_end, next: _catch_clauses()) => {
+                let mut next = try!(next);
+                next.push_front(CatchClause {
+                    ty: qualified_name_to_path(try!(qn)),
+                    var: n.into(),
+                    block: Expr::Block(try!(st).into_iter().collect()),
+                });
+                Ok(next)
+            },
+            () => Ok(LinkedList::new()),
+        }
+
+        _finally_clause(&self) -> Result<Expr<'input>, ParseError> {
+            (_: finally_clause, _: compound_statement, st: _multiple_statements(), _: compound_statement_end) => Ok(Expr::Block(try!(st).into_iter().collect())),
+            () => Ok(Expr::None),
+        }
+
+        _try_statement(&self) -> Result<Expr<'input>, ParseError> {
+            (_: compound_statement, st: _multiple_statements(), _: compound_statement_end, catch_clauses: _catch_clauses(), finally_clause: _finally_clause()) => {
+                Ok(Expr::Try(Box::new(Expr::Block(try!(st).into_iter().collect())), try!(catch_clauses).into_iter().collect(), Box::new(try!(finally_clause))))
+            }
+        }
+
         _statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: expression_statement, e: _expression()) => e,
             (_: jump_statement, st: _jump_statement()) => st,
             (_: selection_statement, st: _selection_statement()) => st,
             (_: iteration_statement, st: _iteration_statement()) => st,
+            (_: try_statement, st: _try_statement()) => st,
             (_: compound_statement, st: _multiple_statements(), _: compound_statement_end) => Ok(Expr::Block(try!(st).into_iter().collect())),
             (_: function_definition, _: function_definition_header, &name: name, params: _function_definition_params(),
                 _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
@@ -966,7 +1005,7 @@ impl_rdp! {
         _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'input>>, ParseError> {
             (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), asc: _namespace_aliasing_clause(), next: _namespace_use_clauses()) => {
                 let mut next = try!(next);
-                next.push_front(UseClause::QualifiedName(try!(qn), try!(asc)));
+                next.push_front(UseClause::QualifiedName(qualified_name_to_path(try!(qn)), try!(asc)));
                 Ok(next)
             },
             () => Ok(LinkedList::new())
@@ -1184,9 +1223,9 @@ fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
     let class_fragment = args.pop().unwrap();
     if args.len() > 0 {
         let namespace = args.join("\\");
-        Path::NamespacedClass(namespace.into(), class_fragment.into())
+        Path::NsIdentifier(namespace.into(), class_fragment.into())
     } else {
-        Path::Class(class_fragment.into())
+        Path::Identifier(class_fragment.into())
     }
 }
 

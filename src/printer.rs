@@ -8,8 +8,8 @@ impl<'a> fmt::Display for Expr<'a> {
             Expr::True => write!(f, "true"),
             Expr::False => write!(f, "false"),
             Expr::Null => write!(f, "null"),
-            Expr::Identifier(ref i) => write!(f, "{}", i),
-            Expr::NsIdentifier(ref ni) => write!(f, "{}", ni.join("\\")),
+
+            Expr::Path(ref p) => write!(f, "{}", p),
             Expr::String(ref str_) => write!(f, "{:?}", str_),
             Expr::Int(ref i) => write!(f, "{}", i),
             Expr::Array(ref items) => {
@@ -191,6 +191,16 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, ")")
             },
+            Expr::Try(ref bl, ref clauses, ref finally) => {
+                try!(write!(f, "try {}", bl));
+                for clause in clauses {
+                    try!(write!(f, "catch ({} {}) {}", clause.ty, clause.var, clause.block));
+                }
+                match **finally {
+                    Expr::None => Ok(()),
+                    ref finally => write!(f, "finally {}", finally)
+                }
+            },
             Expr::Decl(ref decl) => write!(f, "{}\n", decl)
         }
     }
@@ -200,10 +210,9 @@ impl<'a> fmt::Display for UseClause<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             UseClause::QualifiedName(ref parts, ref asc) => {
-                let joined_parts = parts.join("\\");
                 match *asc {
-                    None => write!(f, "{}", joined_parts),
-                    Some(ref x) => write!(f, "{} as {}", joined_parts, x),
+                    None => write!(f, "{}", parts),
+                    Some(ref x) => write!(f, "{} as {}", parts, x),
                 }
             }
         }
@@ -213,8 +222,8 @@ impl<'a> fmt::Display for UseClause<'a> {
 impl<'a> fmt::Display for Path<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Path::Class(ref ns) => write!(f, "{}", ns),
-            Path::NamespacedClass(ref ns, ref cls) => write!(f, "{}\\{}", ns, cls),
+            Path::Identifier(ref ns) => write!(f, "{}", ns),
+            Path::NsIdentifier(ref ns, ref cls) => write!(f, "{}\\{}", ns, cls),
         }
     }
 }

@@ -8,19 +8,18 @@ pub enum ParsedItem<'a> {
 
 pub type UseAlias<'a> = Option<Cow<'a, str>>;
 
-//TODO: maybe use Path for this too?
 #[derive(Clone, Debug, PartialEq)]
 pub enum UseClause<'a> {
-    QualifiedName(Vec<Cow<'a, str>>, UseAlias<'a>),
+    QualifiedName(Path<'a>, UseAlias<'a>),
 }
 
-//TODO: use this in more places instead of Vec<Cow<..>>
 #[derive(Clone, Debug, PartialEq)]
 pub enum Path<'a> {
-    Class(Cow<'a, str>),
+    Identifier(Cow<'a, str>),
+    /// An identifier which is prefixed by a namespace (e.g. a FQDN-class-path)
     /// fragment.1 = The namespace
     /// fragment.2 = The class
-    NamespacedClass(Cow<'a, str>, Cow<'a, str>),
+    NsIdentifier(Cow<'a, str>, Cow<'a, str>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +41,7 @@ pub enum Op {
     PreDec,
     PostInc,
     PostDec,
+    Instanceof,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,8 +69,8 @@ pub enum Expr<'a> {
     True,
     False,
     Null,
-    Identifier(Cow<'a, str>),
-    NsIdentifier(Vec<Cow<'a, str>>),
+    /// indicates the path to e.g. a namespace or is a simple identifier
+    Path(Path<'a>),
     String(String),
     Int(i64),
     Array(Vec<(Box<Expr<'a>>, Box<Expr<'a>>)>),
@@ -100,6 +100,8 @@ pub enum Expr<'a> {
     While(Box<Expr<'a>>, Box<Expr<'a>>),
     DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
     ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
+    /// Try(TryBlock, CatchClauses, FinallyClause)
+    Try(Box<Expr<'a>>, Vec<CatchClause<'a>>, Box<Expr<'a>>),
 
     /// switch (stmt=.0) [case item: body]+=.1
     /// All item-cases for a body will be included in the first-member Vec
@@ -160,4 +162,11 @@ pub enum Decl<'a> {
     Namespace(Vec<Cow<'a, str>>),
     GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
     Class(ClassDecl<'a>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CatchClause<'a> {
+    pub ty: Path<'a>,
+    pub var: Cow<'a, str>,
+    pub block: Expr<'a>,
 }
