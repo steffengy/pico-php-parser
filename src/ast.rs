@@ -94,6 +94,7 @@ pub enum Expr<'a> {
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     AssignRef(Box<Expr<'a>>, Box<Expr<'a>>),
+    List(Vec<(Expr<'a>, Expr<'a>)>),
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
     If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     While(Box<Expr<'a>>, Box<Expr<'a>>),

@@ -154,9 +154,14 @@ impl_rdp! {
         isset_intrinsic                 =  { ["isset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
         expression_list_one_or_more     =  { expression | (expression_list_one_or_more ~ [","] ~ expression) }
         list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ [")"] }
-        list_expression_list            =  { unkeyed_list_expression_list | (keyed_list_expression_list ~ [","]? ) }
-        unkeyed_list_expression_list    =  { list_or_variable | [","] | (unkeyed_list_expression_list ~ [","] ~ list_or_variable? ) }
-        keyed_list_expression_list      =  { (expression ~ ["=>"] ~ list_or_variable) | (keyed_list_expression_list ~ [","] ~ expression ~ ["=>"] ~ list_or_variable) }
+        list_expression_list            =  {
+            (list_or_variable | keyed_list_expression | list_item_empty) ~ (
+                [","] ~ (list_or_variable | keyed_list_expression | list_item_empty)
+            )*
+        }
+        list_item_empty =  { [","] }
+        //unkeyed_list_expression_list  =  list_or_variable
+        keyed_list_expression           =  { expression ~ ["=>"] ~ list_or_variable }
         list_or_variable                =  { list_intrinsic | expression }
         print_intrinsic                 =  { (["print"] ~ expression) | (["print"] ~ ["("] ~ expression ~ [")"]) }
         unset_intrinsic                 =  { ["unset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
@@ -799,7 +804,38 @@ impl_rdp! {
             (_: intrinsic_construct, ic: _intrinsic_construct()) => ic,
         }
 
+        _list_or_variable(&self) -> Result<Expr<'input>, ParseError> {
+            (_: list_intrinsic, e: _list_intrinsic()) => e,
+            (_: expression, e: _expression()) => e,
+        }
+
+        _list_items(&self) -> Result<LinkedList<(Expr<'input>, Expr<'input>)>, ParseError> {
+            (_: list_or_variable, e: _list_or_variable(), next: _list_items()) => {
+                let mut next = try!(next);
+                next.push_front((Expr::None, try!(e)));
+                Ok(next)
+            },
+            (_: keyed_list_expression, _: expression, k: _expression(), _: list_or_variable, v: _list_or_variable(), next: _list_items()) => {
+                let mut next = try!(next);
+                next.push_front((try!(k), try!(v)));
+                Ok(next)
+            },
+            (_: list_item_empty, next: _list_items()) => {
+                let mut next = try!(next);
+                next.push_front((Expr::None, Expr::None));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new()),
+        }
+
+        _list_intrinsic(&self) -> Result<Expr<'input>, ParseError> {
+            (_: list_expression_list, items: _list_items()) => {
+                Ok(Expr::List(try!(items).into_iter().collect()))
+            }
+        }
+
         _intrinsic_construct(&self) -> Result<Expr<'input>, ParseError> {
+            (_: list_intrinsic, e: _list_intrinsic()) => e,
             (_: echo_intrinsic, args: _multiple_expressions()) => {
                 Ok(Expr::Echo(try!(args).into_iter().collect()))
             }

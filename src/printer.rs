@@ -174,6 +174,23 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, "}}")
             },
+            Expr::List(ref items) => {
+                try!(write!(f, "list("));
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        try!(write!(f, ","))
+                    }
+                    match item.0 {
+                        Expr::None => (),
+                        ref x => try!(write!(f, "{} => ", x)),
+                    }
+                    match item.1 {
+                        Expr::None => (),
+                        ref x => try!(write!(f, "{}", x)),
+                    }
+                }
+                write!(f, ")")
+            },
             Expr::Decl(ref decl) => write!(f, "{}\n", decl)
         }
     }
