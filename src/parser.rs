@@ -547,11 +547,11 @@ impl_rdp! {
         _script_sections(&self) -> Result<LinkedList<ParsedItem<'input>>, ParseError> {
             (_: script_section, t: _optional_text(), stmts: _multiple_statements(), t2: _optional_text(), next: _script_sections()) => {
                 let mut next = try!(next);
-                if let Some(text) = try!(t2) {
+                if let Some(text) = t2 {
                     next.push_front(ParsedItem::Text(text.into()));
                 }
                 next.push_front(ParsedItem::CodeBlock(try!(stmts).into_iter().collect()));
-                if let Some(text) = try!(t) {
+                if let Some(text) = t {
                     next.push_front(ParsedItem::Text(text.into()));
                 }
 
@@ -560,9 +560,9 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _optional_text(&self) -> Result<Option<&'input str>, ParseError> {
-            (&t: text) => Ok(Some(t)),
-            () => Ok(None),
+        _optional_text(&self) -> Option<&'input str> {
+            (&t: text) => Some(t),
+            () => None,
         }
 
         _expression(&self) -> Result<Expr<'input>, ParseError> {
@@ -801,6 +801,7 @@ impl_rdp! {
             () => false,
         }
 
+        // TODO: respect is_ref...
         _anonym_func_use_clause(&self) -> LinkedList<Cow<'input, str>> {
             (_: use_variable_name_expr, is_ref: _anonym_func_use_as_ref(), _: variable_name, &n: name, mut next: _anonym_func_use_clause()) => {
                 next.push_front(n.into());
@@ -824,7 +825,7 @@ impl_rdp! {
             },
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
             (_: literal, e: _literal()) => e,
-            (_: constant, e: _constant()) => e,
+            (_: constant, c: _constant()) => Ok(c),
         }
 
         _intrinsic(&self) -> Result<Expr<'input>, ParseError> {
@@ -928,7 +929,6 @@ impl_rdp! {
                 })))
             },
             (_: class_declaration, &name: name, extends: _class_extends(), members: _class_members()) => {
-                let extends = try!(extends);
                 let base_clause = if extends.is_empty() {
                     None
                 } else {
@@ -944,14 +944,14 @@ impl_rdp! {
                 Ok(Expr::Decl(Decl::Namespace(nsi.into_iter().collect())))
             },
             (_: namespace_use_declaration, clauses: _namespace_use_clauses()) => {
-                Ok(Expr::Use(try!(clauses).into_iter().collect()))
+                Ok(Expr::Use(clauses.into_iter().collect()))
             },
             (_: statement, st: _statement()) => st,
         }
 
-        _class_extends(&self) -> Result<Vec<Cow<'input, str>>, ParseError> {
-            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(qn.into_iter().collect()),
-            () => Ok(vec![]),
+        _class_extends(&self) -> Vec<Cow<'input, str>> {
+            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => qn.into_iter().collect(),
+            () => vec![],
         }
 
         _class_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
@@ -965,12 +965,12 @@ impl_rdp! {
 
         _class_member(&self) -> Result<ClassMember<'input>, ParseError> {
             (_: property_declaration, modifiers: _modifiers(), _: variable_name, &name: name, default_value: _opt_property_value()) => {
-                Ok(ClassMember::Property(try!(modifiers), name.into(), try!(default_value)))
+                Ok(ClassMember::Property(modifiers, name.into(), try!(default_value)))
             },
             (_: method_declaration, modifiers: _modifiers(), _: function_definition, _: function_definition_header,
                 &name: name, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement,
                 body: _multiple_statements(), _: compound_statement_end) => {
-                Ok(ClassMember::Method(try!(modifiers), name.into(), FunctionDecl {
+                Ok(ClassMember::Method(modifiers, name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
                     usev: vec![],
@@ -1012,48 +1012,42 @@ impl_rdp! {
             () => Ok(Expr::None)
         }
 
-        _modifiers(&self) -> Result<Modifiers, ParseError> {
-            (_: static_modifier, next: _modifiers()) => {
-                let mut next = try!(next);
+        _modifiers(&self) -> Modifiers {
+            (_: static_modifier, mut next: _modifiers()) => {
                 next.0 = true;
-                Ok(next)
+                next
             },
-            (_: visibility_modifier, visibility, next: _modifiers()) => {
-                let mut next = try!(next);
+            (_: visibility_modifier, visibility, mut next: _modifiers()) => {
                 next.1 = match visibility.rule {
                     Rule::visibility_private => Visibility::Private,
                     Rule::visibility_public => Visibility::Public,
                     Rule::visibility_protected => Visibility::Protected,
                     _ => unreachable!()
                 };
-                Ok(next)
+                next
             },
-            (_: class_modifier, modifier, next: _modifiers()) => {
-                let mut next = try!(next);
+            (_: class_modifier, modifier, mut next: _modifiers()) => {
                 next.2 = match modifier.rule {
                     Rule::class_modifier_final => ClassModifier::Final,
                     Rule::class_modifier_abstract => ClassModifier::Abstract,
                     _ => unreachable!()
                 };
-                Ok(next)
+                next
             },
-            () => Ok(Modifiers(false, Visibility::None, ClassModifier::None))
+            () => Modifiers(false, Visibility::None, ClassModifier::None)
         }
 
-        _namespace_aliasing_clause(&self) -> Result<Option<Cow<'input, str>>, ParseError> {
-            (_: namespace_aliasing_clause, &name: name) => {
-                Ok(Some(name.into()))
-            },
-            () => Ok(None),
+        _namespace_aliasing_clause(&self) -> Option<Cow<'input, str>> {
+            (_: namespace_aliasing_clause, &name: name) => Some(name.into()),
+            () => None,
         }
 
-        _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'input>>, ParseError> {
-            (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), asc: _namespace_aliasing_clause(), next: _namespace_use_clauses()) => {
-                let mut next = try!(next);
-                next.push_front(UseClause::QualifiedName(qualified_name_to_path(qn), try!(asc)));
-                Ok(next)
+        _namespace_use_clauses(&self) -> LinkedList<UseClause<'input>> {
+            (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), asc: _namespace_aliasing_clause(), mut next: _namespace_use_clauses()) => {
+                next.push_front(UseClause::QualifiedName(qualified_name_to_path(qn), asc));
+                next
             },
-            () => Ok(LinkedList::new())
+            () => LinkedList::new(),
         }
 
         _breakout_level(&self) -> Result<usize, ParseError> {
@@ -1128,14 +1122,14 @@ impl_rdp! {
             () => Ok(Expr::None),
         }
 
-        _function_definition_param_as_ref(&self) -> Result<bool, ParseError> {
-            (_: parameter_as_ref) => Ok(true),
-            () => Ok(false),
+        _function_definition_param_as_ref(&self) -> bool {
+            (_: parameter_as_ref) => true,
+            () => false,
         }
 
-        _function_definition_param_ty(&self) -> Result<Option<Ty>, ParseError> {
+        _function_definition_param_ty(&self) -> Option<Ty> {
             (_: type_declaration, _: type_declaration_ty, ty) => {
-                Ok(Some(match ty.rule {
+                Some(match ty.rule {
                     Rule::type_array => Ty::Array,
                     Rule::type_string => Ty::String,
                     Rule::type_int => Ty::Int,
@@ -1143,9 +1137,9 @@ impl_rdp! {
                     Rule::type_bool => Ty::Bool,
                     Rule::type_callable => Ty::Callable,
                     _ => unreachable!(),
-                }))
+                })
             },
-            () => Ok(None),
+            () => None,
         }
 
         _function_definition_param_default(&self) -> Result<Expr<'input>, ParseError> {
@@ -1157,16 +1151,16 @@ impl_rdp! {
             (_: parameter_declaration, ty: _function_definition_param_ty(), as_ref: _function_definition_param_as_ref(), _: variable_name,
                 &name: name, default: _function_definition_param_default(), next: _function_definition_params()) => {
                 let mut next = try!(next);
-                next.push_front(ParamDefinition { name: name.into(), as_ref: try!(as_ref), ty: try!(ty), default: try!(default) });
+                next.push_front(ParamDefinition { name: name.into(), as_ref: as_ref, ty: ty, default: try!(default) });
                 Ok(next)
             },
             () => Ok(LinkedList::new())
         }
 
-        _constant(&self) -> Result<Expr<'input>, ParseError> {
-            (_: constant_true) => Ok(Expr::True),
-            (_: constant_false) => Ok(Expr::False),
-            (_: constant_null) => Ok(Expr::Null),
+        _constant(&self) -> Expr<'input> {
+            (_: constant_true) => Expr::True,
+            (_: constant_false) => Expr::False,
+            (_: constant_null) => Expr::Null,
         }
 
         _literal(&self) -> Result<Expr<'input>, ParseError> {
@@ -1246,7 +1240,7 @@ impl_rdp! {
                 result.push_back(last.into());
                 result.into_iter().collect()
             },
-            (&current: name) => vec![current.into()]
+            (&current: name) => vec![current.into()],
         }
 
         _namespace_name_as_prefix(&self) -> LinkedList<Cow<'input, str>> {
