@@ -28,7 +28,7 @@ fn parse_simple_fn_decl() {
     assert_eq!(process_script(r#"<?php function hello_world() { echo "hello world"; } hello_world();"#), vec![
         ParsedItem::CodeBlock(vec![Expr::Decl(Decl::GlobalFunction("hello_world".into(), FunctionDecl {
                 params: vec![],
-                body: vec![Expr::Echo(vec![Expr::String("hello world".into())])]
+                body: vec![Expr::Echo(vec![Expr::String("hello world".into())])], usev: vec![],
             })), Expr::Call(Box::new(Expr::Path(Path::Identifier("hello_world".into()))), vec![])
         ])
     ]);

@@ -3,7 +3,8 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, Op, ParsedItem, ParamDefinition, Path, Ty, UseClause, Visibility};
+use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers,
+    Op, ParsedItem, ParamDefinition, Path, Ty, TraitUse, UseClause, Visibility};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -169,8 +170,7 @@ impl_rdp! {
             ["static"]? ~ ["function"] ~ function_ret_reference? ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end
             ~ return_type? ~ anonym_func_use_clause? ~ compound_statement
         }
-        anonym_func_use_clause          =  { ["use"] ~ ["("] ~ use_variable_name_list ~ [")"] }
-        use_variable_name_list          =  { use_variable_name_expr ~ ([","] ~ use_variable_name_expr)* }
+        anonym_func_use_clause          = _{ ["use"] ~ ["("] ~ (use_variable_name_expr ~ ([","] ~ use_variable_name_expr)*) ~ [")"] }
         use_variable_name_expr          =  { use_variable_byref? ~ variable_name }
         use_variable_byref              =  { ["&"] }
 
@@ -497,9 +497,8 @@ impl_rdp! {
         trait_member_declaration        =  { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clauses }
         trait_use_clause                =  { ["use"] ~ trait_name_list ~ trait_use_specification }
         trait_use_clauses               =  { trait_use_clause | (trait_use_clauses ~ trait_use_clause) }
-        trait_name_list                 =  { qualified_name | (trait_name_list ~ [","] ~ qualified_name) }
-        trait_use_specification         =  { [";"] | (["{"] ~ trait_select_and_alias_clauses? ~ ["}"]) }
-        trait_select_and_alias_clauses  =  { trait_select_and_alias_clause | (trait_select_and_alias_clauses ~ trait_select_and_alias_clause) }
+        trait_name_list                 =  { qualified_name ~ ([","] ~ qualified_name)* }
+        trait_use_specification         =  { [";"] | (["{"] ~ trait_select_and_alias_clause* ~ ["}"]) }
         trait_select_and_alias_clause   =  { (trait_select_insteadof_clause | trait_alias_as_clause) ~ [";"] }
         trait_select_insteadof_clause   =  { name ~ ["insteadof"] ~ name }
         trait_alias_as_clause           =  {
@@ -648,7 +647,7 @@ impl_rdp! {
 
         _optional_instanceof_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: instanceof_expression, _: qualified_name, qn: _qualified_name()) => {
-                Ok(Expr::BinaryOp(Op::Instanceof, Box::new(Expr::None), Box::new(Expr::Path(qualified_name_to_path(try!(qn))))))
+                Ok(Expr::BinaryOp(Op::Instanceof, Box::new(Expr::None), Box::new(Expr::Path(qualified_name_to_path(qn)))))
             },
             (_: instanceof_expression, _: variable_name, &name: name) => {
                 Ok(Expr::BinaryOp(Op::Instanceof, Box::new(Expr::None), Box::new(Expr::Variable(name.into()))))
@@ -671,7 +670,7 @@ impl_rdp! {
             (_: primary_expression, e: _primary_expression()) => e,
             (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
             (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), args: _call_args(), _: function_call_end) => {
-                Ok(Expr::New(qualified_name_to_path(try!(qn)), try!(args).into_iter().collect()))
+                Ok(Expr::New(qualified_name_to_path(qn), try!(args).into_iter().collect()))
             },
             (_: array_creation_expression, values: _array_element_initializers()) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
@@ -797,16 +796,31 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
+        _anonym_func_use_as_ref(&self) -> bool {
+            (_: use_variable_byref) => true,
+            () => false,
+        }
+
+        _anonym_func_use_clause(&self) -> LinkedList<Cow<'input, str>> {
+            (_: use_variable_name_expr, is_ref: _anonym_func_use_as_ref(), _: variable_name, &n: name, mut next: _anonym_func_use_clause()) => {
+                next.push_front(n.into());
+                next
+            },
+            () => LinkedList::new(),
+        }
+
         _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: intrinsic, i: _intrinsic()) => i,
-            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
+            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, use_clause: _anonym_func_use_clause(),
+                _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Function(FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
+                    usev: use_clause.into_iter().collect(),
                 }))
             },
             (_: qualified_name, qn: _qualified_name()) => {
-                Ok(Expr::Path(qualified_name_to_path(try!(qn))))
+                Ok(Expr::Path(qualified_name_to_path(qn)))
             },
             (_: variable_name, &n: name) => Ok(Expr::Variable(n.into())),
             (_: literal, e: _literal()) => e,
@@ -878,7 +892,7 @@ impl_rdp! {
                 st: _multiple_statements(), _: compound_statement_end, next: _catch_clauses()) => {
                 let mut next = try!(next);
                 next.push_front(CatchClause {
-                    ty: qualified_name_to_path(try!(qn)),
+                    ty: qualified_name_to_path(qn),
                     var: n.into(),
                     block: Expr::Block(try!(st).into_iter().collect()),
                 });
@@ -910,6 +924,7 @@ impl_rdp! {
                 Ok(Expr::Decl(Decl::GlobalFunction(name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
+                    usev: vec![],
                 })))
             },
             (_: class_declaration, &name: name, extends: _class_extends(), members: _class_members()) => {
@@ -926,7 +941,7 @@ impl_rdp! {
                 })))
             },
             (_: namespace_definition, _: namespace_name, nsi: _namespace_name_item()) => {
-                Ok(Expr::Decl(Decl::Namespace(try!(nsi).into_iter().collect())))
+                Ok(Expr::Decl(Decl::Namespace(nsi.into_iter().collect())))
             },
             (_: namespace_use_declaration, clauses: _namespace_use_clauses()) => {
                 Ok(Expr::Use(try!(clauses).into_iter().collect()))
@@ -935,7 +950,7 @@ impl_rdp! {
         }
 
         _class_extends(&self) -> Result<Vec<Cow<'input, str>>, ParseError> {
-            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(try!(qn).into_iter().collect()),
+            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Ok(qn.into_iter().collect()),
             () => Ok(vec![]),
         }
 
@@ -958,8 +973,38 @@ impl_rdp! {
                 Ok(ClassMember::Method(try!(modifiers), name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
+                    usev: vec![],
                 }))
+            },
+            (_: trait_use_clause, _: trait_name_list, list: _trait_name_list(), _: trait_use_specification, clauses: _trait_select_and_alias_clauses()) =>{
+                Ok(ClassMember::TraitUse(list.into_iter().collect(), clauses.into_iter().collect()))
             }
+        }
+
+        _trait_alias_as_clause(&self) -> TraitUse<'input> {
+            // Dummy placeholder to make this panic, so we can implement it when required later
+            // this can never happen, and this function will always panic like that
+            (&n: trait_alias_as_clause) => TraitUse::InsteadOf("".into(), "".into())
+        }
+
+        _trait_select_and_alias_clauses(&self) -> LinkedList<TraitUse<'input>> {
+            (_: trait_select_and_alias_clause, _: trait_select_insteadof_clause, &n1: name, &n2: name, mut next: _trait_select_and_alias_clauses()) => {
+                next.push_front(TraitUse::InsteadOf(n1.into(), n2.into()));
+                next
+            },
+            (_: trait_select_and_alias_clause, _: trait_alias_as_clause, cl: _trait_alias_as_clause(), mut next: _trait_select_and_alias_clauses()) => {
+                next.push_front(cl);
+                next
+            },
+            () => LinkedList::new(),
+        }
+
+        _trait_name_list(&self) -> LinkedList<Path<'input>> {
+            (_: qualified_name, qn: _qualified_name(), mut next: _trait_name_list()) => {
+                next.push_front(qualified_name_to_path(qn));
+                next
+            },
+            () => LinkedList::new(),
         }
 
         _opt_property_value(&self) -> Result<Expr<'input>, ParseError> {
@@ -1005,7 +1050,7 @@ impl_rdp! {
         _namespace_use_clauses(&self) -> Result<LinkedList<UseClause<'input>>, ParseError> {
             (_: namespace_use_clause, _: qualified_name, qn: _qualified_name(), asc: _namespace_aliasing_clause(), next: _namespace_use_clauses()) => {
                 let mut next = try!(next);
-                next.push_front(UseClause::QualifiedName(qualified_name_to_path(try!(qn)), try!(asc)));
+                next.push_front(UseClause::QualifiedName(qualified_name_to_path(qn), try!(asc)));
                 Ok(next)
             },
             () => Ok(LinkedList::new())
@@ -1195,26 +1240,25 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
-        _qualified_name(&self) -> Result<Vec<Cow<'input, str>>, ParseError> {
+        _qualified_name(&self) -> Vec<Cow<'input, str>> {
             (_: namespace_name_as_a_prefix, ns: _namespace_name_as_prefix(), &last: name) => {
-                let mut result = try!(ns);
+                let mut result = ns;
                 result.push_back(last.into());
-                Ok(result.into_iter().collect())
+                result.into_iter().collect()
             },
-            (&current: name) => Ok(vec![current.into()])
+            (&current: name) => vec![current.into()]
         }
 
-        _namespace_name_as_prefix(&self) -> Result<LinkedList<Cow<'input, str>>, ParseError> {
+        _namespace_name_as_prefix(&self) -> LinkedList<Cow<'input, str>> {
             (e: _namespace_name_item()) => e,
         }
 
-        _namespace_name_item(&self) -> Result<LinkedList<Cow<'input, str>>, ParseError> {
-            (_: namespace_name_item, &current: name, next: _namespace_name_item()) => {
-                let mut next = try!(next);
+        _namespace_name_item(&self) -> LinkedList<Cow<'input, str>> {
+            (_: namespace_name_item, &current: name, mut next: _namespace_name_item()) => {
                 next.push_front(current.into());
-                Ok(next)
+                next
             },
-            () => Ok(LinkedList::new())
+            () => LinkedList::new()
         }
     }
 }

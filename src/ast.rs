@@ -129,6 +129,12 @@ pub enum Ty {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum TraitUse<'a> {
+    InsteadOf(Cow<'a, str>, Cow<'a, str>),
+    As(Cow<'a, str>, Cow<'a, str>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParamDefinition<'a> {
     pub name: Cow<'a, str>,
     pub as_ref: bool,
@@ -142,6 +148,9 @@ pub struct ParamDefinition<'a> {
 pub struct FunctionDecl<'a> {
     pub params: Vec<ParamDefinition<'a>>,
     pub body: Vec<Expr<'a>>,
+    /// A list of variables to pass from the parent scope to the scope of this function
+    /// So variables which are basically available shared into this function's scope
+    pub usev: Vec<Cow<'a, str>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -155,6 +164,7 @@ pub struct ClassDecl<'a> {
 pub enum ClassMember<'a> {
     Property(Modifiers, Cow<'a, str>, Expr<'a>),
     Method(Modifiers, Cow<'a, str>, FunctionDecl<'a>),
+    TraitUse(Vec<Path<'a>>, Vec<TraitUse<'a>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -132,7 +132,7 @@ fn parse_expr_post_pre_dec_inc() {
 fn parse_expr_closure() {
     assert_eq!(process_expr("function () { c(); }"), Expr::Function(FunctionDecl {
         params: vec![],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![])]
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![])], usev: vec![],
     }));
 }
 

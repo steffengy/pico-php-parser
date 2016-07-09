@@ -320,7 +320,8 @@ impl <'a> fmt::Display for ClassMember<'a> {
             },
             ClassMember::Method(ref modifiers, ref name, ref fdecl) => {
                 write!(f, "{} function {} {}", modifiers, name, fdecl)
-            }
+            },
+            ClassMember::TraitUse(_, _) => unimplemented!(),
         }
     }
 }
