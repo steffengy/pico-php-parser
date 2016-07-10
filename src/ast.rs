@@ -157,6 +157,8 @@ pub struct FunctionDecl<'a> {
 pub struct ClassDecl<'a> {
     pub name: Cow<'a, str>,
     pub base_class: Option<Path<'a>>,
+    /// The implemented interfaces of this class
+    pub implements: Vec<Path<'a>>,
     pub members: Vec<ClassMember<'a>>,
 }
 

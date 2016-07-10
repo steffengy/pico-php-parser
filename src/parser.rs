@@ -928,15 +928,11 @@ impl_rdp! {
                     usev: vec![],
                 })))
             },
-            (_: class_declaration, &name: name, extends: _class_extends(), members: _class_members()) => {
-                let base_clause = if extends.is_empty() {
-                    None
-                } else {
-                    Some(qualified_name_to_path(extends))
-                };
+            (_: class_declaration, &name: name, base_clause: _class_extends(), implements: _class_implements(), members: _class_members()) => {
                 Ok(Expr::Decl(Decl::Class(ClassDecl {
                     name: name.into(),
                     base_class: base_clause,
+                    implements: implements,
                     members: try!(members).into_iter().collect(),
                 })))
             },
@@ -949,8 +945,21 @@ impl_rdp! {
             (_: statement, st: _statement()) => st,
         }
 
-        _class_extends(&self) -> Vec<Cow<'input, str>> {
-            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => qn.into_iter().collect(),
+        _class_extends(&self) -> Option<Path<'input>> {
+            (_: class_base_clause, _: qualified_name, qn: _qualified_name()) => Some(qualified_name_to_path(qn)),
+            () => None,
+        }
+
+        _class_implements_internal(&self) -> LinkedList<Path<'input>> {
+            (_: qualified_name, qn: _qualified_name(), mut next: _class_implements_internal()) => {
+                next.push_front(qualified_name_to_path(qn));
+                next
+            },
+            () => LinkedList::new(),
+        }
+
+        _class_implements(&self) -> Vec<Path<'input>> {
+            (_: class_interface_clause, i: _class_implements_internal()) => i.into_iter().collect(),
             () => vec![],
         }
 
@@ -984,7 +993,7 @@ impl_rdp! {
         _trait_alias_as_clause(&self) -> TraitUse<'input> {
             // Dummy placeholder to make this panic, so we can implement it when required later
             // this can never happen, and this function will always panic like that
-            (&n: trait_alias_as_clause) => TraitUse::InsteadOf("".into(), "".into())
+            (_: trait_alias_as_clause) => TraitUse::InsteadOf("".into(), "".into())
         }
 
         _trait_select_and_alias_clauses(&self) -> LinkedList<TraitUse<'input>> {
