@@ -226,7 +226,7 @@ impl_rdp! {
         // Section: Unary Operators
         unary_expression_internal       = _{
             postfix_expression | error_control_expression |
-            shell_command_expression | cast_expression | var_name_creation_expression
+            shell_command_expression | var_name_creation_expression
         }
         unary_expression                =  {
             unary_expression_internal ~ instanceof_expression?
@@ -234,10 +234,10 @@ impl_rdp! {
         unary_operator                  =  { op_add | op_sub | op_not | ["~"] }
         error_control_expression        =  { ["@"] ~ expression }
         shell_command_expression        =  { ["`"] ~ dq_char* ~ ["`"] }
-        cast_expression                 =  { (["("] ~ cast_type ~ [")"] ~ expression) }
+        cast_expression                 =  { ["("] ~ cast_type ~ [")"] ~ expression }
         cast_type                       =  {
-            ["array"] | ["binary"] | ["bool"] | ["boolean"] | ["double"] | ["int"] | ["integer"] | ["float"] | ["object"] | ["real"] |
-            ["string"] | ["unset"]
+            type_array | type_binary | type_bool | type_boolean | type_double | type_int | type_integer | type_float | type_object | type_real |
+            type_string | type_unset
         }
         // TODO: this shouldn't be ["$"] ~ expression (expression is too much for this subrule)
         var_name_creation_expression    =  { (["$"] ~ expression) | (["$"] ~ ["{"] ~ expression ~ ["}"]) }
@@ -248,7 +248,7 @@ impl_rdp! {
 
         // Unary/Binary Operators from various sections rewritten to use precedence-climbing
         _exponentiation                 = _{
-            { (["("] ~ binary_expression ~ [")"]) | unary_expression }
+            { cast_expression | (["("] ~ binary_expression ~ [")"]) | unary_expression }
             exponentiation = {< op_pow }
         }
         _unary                          = _{ unary | _exponentiation }
@@ -455,9 +455,16 @@ impl_rdp! {
         type_declaration                =  { type_declaration_ty | qualified_name }
         type_declaration_ty             =  { type_array | type_callable | scalar_type }
         type_bool                       =  { ["bool"] }
+        type_boolean                    =  { ["boolean"] }
+        type_binary                     =  { ["binary"] }
+        type_double                     =  { ["double"] }
         type_float                      =  { ["float"] }
         type_int                        =  { ["int"] }
+        type_integer                    =  { ["integer"] }
         type_string                     =  { ["string"] }
+        type_object                     =  { ["object"] }
+        type_unset                      =  { ["unset"] }
+        type_real                       =  { ["real"] }
         scalar_type                     = _{ type_bool | type_float | type_int | type_string }
         default_argument_specifier      =  { ["="] ~ constant_expression }
 
@@ -605,6 +612,9 @@ impl_rdp! {
 
         _binary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: binary_expression, e: _binary_expression()) => e,
+            (_: cast_expression, _: cast_type, ty, _: expression, e: _expression()) => {
+                Ok(Expr::Cast(rule_to_ty(ty.rule), Box::new(try!(e))))
+            },
             (_: unary, _: increment_or_decrement_op, op, operand: _binary_expression()) => {
                 Ok(Expr::UnaryOp(match op.rule {
                     Rule::op_increment => Op::PreInc,
@@ -1138,15 +1148,7 @@ impl_rdp! {
 
         _function_definition_param_ty(&self) -> Option<Ty> {
             (_: type_declaration, _: type_declaration_ty, ty) => {
-                Some(match ty.rule {
-                    Rule::type_array => Ty::Array,
-                    Rule::type_string => Ty::String,
-                    Rule::type_int => Ty::Int,
-                    Rule::type_float => Ty::Float,
-                    Rule::type_bool => Ty::Bool,
-                    Rule::type_callable => Ty::Callable,
-                    _ => unreachable!(),
-                })
+                Some(rule_to_ty(ty.rule))
             },
             () => None,
         }
@@ -1273,6 +1275,18 @@ fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
         Path::NsIdentifier(namespace.into(), class_fragment.into())
     } else {
         Path::Identifier(class_fragment.into())
+    }
+}
+
+fn rule_to_ty(r: Rule) -> Ty {
+    match r {
+        Rule::type_array => Ty::Array,
+        Rule::type_string => Ty::String,
+        Rule::type_int => Ty::Int,
+        Rule::type_float => Ty::Float,
+        Rule::type_bool => Ty::Bool,
+        Rule::type_callable => Ty::Callable,
+        _ => unreachable!(),
     }
 }
 

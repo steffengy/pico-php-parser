@@ -175,3 +175,8 @@ fn parse_expr_reference() {
 fn parse_expr_ternary() {
     assert_eq!(process_expr("$test?true:false"), Expr::TernaryIf(Box::new(Expr::Variable("test".into())), Box::new(Expr::True), Box::new(Expr::False)));
 }
+
+#[test]
+fn parse_expr_cast() {
+    assert_eq!(process_expr("(bool) $test"), Expr::Cast(Ty::Bool, Box::new(Expr::Variable("test".into()))));
+}

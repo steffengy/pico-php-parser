@@ -1,5 +1,5 @@
 use std::fmt::{self, Write};
-use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, UseClause, Visibility};
+use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, Visibility};
 
 impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -120,6 +120,9 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::Cast(ref ty, ref e) => {
+                write!(f, "({}){}", ty, e)
+            },
             Expr::Function(ref decl) => {
                 write!(f, "function {}", decl)
             },
@@ -203,6 +206,19 @@ impl<'a> fmt::Display for Expr<'a> {
             },
             Expr::Decl(ref decl) => write!(f, "{}\n", decl)
         }
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            Ty::Array => "array",
+            Ty::Callable => "callable",
+            Ty::Bool => "bool",
+            Ty::Float => "float",
+            Ty::Int => "int",
+            Ty::String => "string"
+        })
     }
 }
 

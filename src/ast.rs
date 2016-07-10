@@ -90,6 +90,7 @@ pub enum Expr<'a> {
     New(Path<'a>, Vec<Expr<'a>>),
     UnaryOp(Op, Box<Expr<'a>>),
     BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
+    Cast(Ty, Box<Expr<'a>>),
     Function(FunctionDecl<'a>),
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
