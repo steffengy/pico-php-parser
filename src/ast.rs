@@ -48,6 +48,7 @@ pub enum Op {
     Le,
     Ge,
     // bitwise
+    BitwiseAnd,
     BitwiseInclOr,
     /// XOR
     BitwiseExclOr,
@@ -102,6 +103,7 @@ pub enum Expr<'a> {
     Reference(Box<Expr<'a>>),
     Block(Vec<Expr<'a>>),
     Use(Vec<UseClause<'a>>),
+    Clone(Box<Expr<'a>>),
     Exit(Box<Expr<'a>>),
     Echo(Vec<Expr<'a>>),
     Isset(Vec<Expr<'a>>),
@@ -120,7 +122,7 @@ pub enum Expr<'a> {
     ObjMember(Box<Expr<'a>>, Vec<Expr<'a>>),
     StaticMember(Box<Expr<'a>>, Vec<Expr<'a>>),
     Call(Box<Expr<'a>>, Vec<Expr<'a>>),
-    New(Path<'a>, Vec<Expr<'a>>),
+    New(Box<Expr<'a>>, Vec<Expr<'a>>),
     UnaryOp(UnaryOp, Box<Expr<'a>>),
     BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
     Cast(Ty<'a>, Box<Expr<'a>>),
@@ -225,6 +227,7 @@ pub enum Decl<'a> {
     Class(ClassDecl<'a>),
     Interface(Cow<'a, str>, Vec<Path<'a>>, Vec<ClassMember<'a>>),
     Trait(Cow<'a, str>, Vec<ClassMember<'a>>),
+    StaticVars(Vec<(Cow<'a, str>, Expr<'a>)>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

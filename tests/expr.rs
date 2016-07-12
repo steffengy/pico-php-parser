@@ -140,7 +140,7 @@ fn parse_expr_closure() {
         params: vec![],
         body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![])], usev: vec![], ret_ref: false,
     }));
-    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr::ObjMember(Box::new(Expr::New(Path::Identifier("Factory".into()), vec![])),
+    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr::ObjMember(Box::new(Expr::New(Box::new(Expr::Path(Path::Identifier("Factory".into()))), vec![])),
         vec![Expr::Path(Path::Identifier("test".into()))])
     );
 }
@@ -155,9 +155,9 @@ fn parse_ns_identifier() {
 
 #[test]
 fn parse_expr_new() {
-    assert_eq!(process_expr("new TestA()"), Expr::New(Path::Identifier("TestA".into()), vec![]));
-    assert_eq!(process_expr("new Foo\\Bar()"), Expr::New(Path::NsIdentifier("Foo".into(), "Bar".into()), vec![]));
-    assert_eq!(process_expr("new Foo"), Expr::New(Path::Identifier("Foo".into()), vec![]));
+    assert_eq!(process_expr("new TestA()"), Expr::New(Box::new(Expr::Path(Path::Identifier("TestA".into()))), vec![]));
+    assert_eq!(process_expr("new Foo\\Bar()"), Expr::New(Box::new(Expr::Path(Path::NsIdentifier("Foo".into(), "Bar".into()))), vec![]));
+    assert_eq!(process_expr("new Foo"), Expr::New(Box::new(Expr::Path(Path::Identifier("Foo".into()))), vec![]));
 }
 
 #[test]
@@ -212,4 +212,9 @@ fn parse_expr_empty() {
 #[test]
 fn parse_expr_error_control() {
     assert_eq!(process_expr("@test()"), Expr::ErrorControl(Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![]))));
+}
+
+#[test]
+fn parse_expr_clone() {
+    assert_eq!(process_expr("clone $test"), Expr::Clone(Box::new(Expr::Variable("test".into()))));
 }

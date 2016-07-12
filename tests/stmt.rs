@@ -197,6 +197,11 @@ fn parse_interface_decl() {
 }
 
 #[test]
+fn parse_static_decl() {
+    assert_eq!(process_stmt("static $t=true;"), Expr::Decl(Decl::StaticVars(vec![("t".into(), Expr::True)])));
+}
+
+#[test]
 fn parse_class_trait_use() {
     assert_eq!(process_stmt("class Test { use Abc; }"), Expr::Decl(Decl::Class(ClassDecl { name: "Test".into(), base_class: None, implements: vec![], members: vec![
         ClassMember::TraitUse(vec![Path::Identifier("Abc".into())], vec![])
@@ -285,8 +290,10 @@ fn parse_unset_statement() {
 
 #[test]
 fn parse_stmt_throw() {
-    assert_eq!(process_stmt(r#"throw new Exception("test");"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![Expr::String("test".into())]))));
-    assert_eq!(process_stmt(r#"throw new Exception;"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![]))));
+    assert_eq!(process_stmt(r#"throw new Exception("test");"#), Expr::Throw(Box::new(Expr::New(Box::new(Expr::Path(Path::Identifier("Exception".into()))),
+        vec![Expr::String("test".into())])))
+    );
+    assert_eq!(process_stmt(r#"throw new Exception;"#), Expr::Throw(Box::new(Expr::New(Box::new(Expr::Path(Path::Identifier("Exception".into()))), vec![]))));
 }
 
 #[test]
@@ -306,5 +313,7 @@ fn parse_stmt_exit() {
 
 #[test]
 fn parse_stmt_new_as_param() {
-    assert_eq!(process_stmt("r(new Foo);"), Expr::Call(Box::new(Expr::Path(Path::Identifier("r".into()))), vec![Expr::New(Path::Identifier("Foo".into()), vec![])]));
+    assert_eq!(process_stmt("r(new Foo);"), Expr::Call(Box::new(Expr::Path(Path::Identifier("r".into()))), vec![
+        Expr::New(Box::new(Expr::Path(Path::Identifier("Foo".into()))), vec![])])
+    );
 }

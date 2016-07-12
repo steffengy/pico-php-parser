@@ -41,6 +41,7 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::Clone(ref arg) => write!(f, "clone {}", arg),
             Expr::Exit(ref arg) => {
                 if let Expr::None = **arg {
                     write!(f, "exit()")
@@ -282,6 +283,7 @@ impl fmt::Display for Op {
             Op::Le => "<=",
             Op::Ge => ">=",
             Op::Spaceship => "<=>",
+            Op::BitwiseAnd => "&",
             Op::BitwiseInclOr => "|",
             Op::BitwiseExclOr => "^",
             Op::Instanceof => unreachable!(),
@@ -342,6 +344,14 @@ impl<'a> fmt::Display for Decl<'a> {
                 }
                 write!(f, "}}\n")
             },
+            Decl::StaticVars(ref vars) => {
+                try!(write!(f, "static "));
+                for (i, var) in vars.iter().enumerate() {
+                    try!(write_comma_separator(f, i));
+                    try!(write!(f, "{} = {}", var.0, var.1));
+                }
+                write!(f, ";")
+            }
         }
     }
 }

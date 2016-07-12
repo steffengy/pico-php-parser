@@ -124,12 +124,11 @@ impl_rdp! {
         nowdoc_string_literal           = @{ ["<<<"] ~ ["'"] ~ name ~ ["'"] ~ new_line ~ hd_char* ~ new_line ~ name ~ [";"]? ~ new_line }
 
         // Section: Variables
-        function_static_declaration     =  { ["static"] ~ static_variable_name_list ~ [";"] }
-        static_variable_name_list       =  { static_variable_declaration }
-        static_variable_declaration     =  { variable_name ~ function_static_initializer? }
-        function_static_initializer     =  { ["="] ~ constant_expression }
+        // http://php.net/manual/en/language.variables.scope.php
+        function_static_declaration     =  { ["static"] ~ static_variable_declaration ~ ([","] ~ static_variable_declaration)* ~ [";"] }
+        static_variable_declaration     =  { variable_name ~ (["="] ~ constant_expression)? }
         global_declaration              =  { ["global"] ~ variable_name_list ~ [";"] }
-        variable_name_list              =  { expression | (variable_name_list ~ [","] ~ expression) }
+        variable_name_list              =  { expression ~ ([","] ~ expression)* }
 
         // Section: Expressions
         // In the reference this contains "constant_expression", we use "array_creation_expression" to prevent infinite recursion
@@ -682,6 +681,9 @@ impl_rdp! {
             (_: bitwise_exc_or_expression, left: _binary_expression(), _: op_bitwise_inc_or, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::BitwiseExclOr, Box::new(try!(left)), Box::new(try!(right))))
             },
+            (_: bitwise_and_expression, left: _binary_expression(), _: op_bitwise_and, right: _binary_expression()) => {
+                Ok(Expr::BinaryOp(Op::BitwiseAnd, Box::new(try!(left)), Box::new(try!(right))))
+            },
             (_: exponentiation, left: _binary_expression(), _: op_pow, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Pow, Box::new(try!(left)), Box::new(try!(right))))
             },
@@ -710,13 +712,19 @@ impl_rdp! {
             (_: error_control_expression, _: expression, e: _expression()) => Ok(Expr::ErrorControl(Box::new(try!(e))))
         }
 
+        _qualified_name_or_expr(&self) -> Result<Expr<'input>, ParseError> {
+            (_: qualified_name, qn: _qualified_name()) => Ok(Expr::Path(qualified_name_to_path(qn))),
+            (_: expression, e: _expression()) => e,
+        }
+
         _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
+            (_: clone_expression, _: expression, e: _expression()) => Ok(Expr::Clone(Box::new(try!(e)))),
             (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
-            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), _: function_call, args: _call_args(), _: function_call_end) => {
-                Ok(Expr::New(qualified_name_to_path(qn), try!(args).into_iter().collect()))
+            (_: object_creation_expression, e: _qualified_name_or_expr(), _: function_call, args: _call_args(), _: function_call_end) => {
+                Ok(Expr::New(Box::new(try!(e)), try!(args).into_iter().collect()))
             },
-            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name()) => Ok(Expr::New(qualified_name_to_path(qn), vec![])),
+            (_: object_creation_expression, e: _qualified_name_or_expr()) => Ok(Expr::New(Box::new(try!(e)), vec![])),
             (_: array_creation_expression, values: _array_element_initializers()) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
             }
@@ -997,6 +1005,9 @@ impl_rdp! {
                     try!(members).into_iter().collect(),
                 )))
             },
+            (_: function_static_declaration, vars: _static_variable_decls()) => {
+                Ok(Expr::Decl(Decl::StaticVars(try!(vars).into_iter().collect())))
+            },
             (_: namespace_definition, _: namespace_name, nsi: _namespace_name_item()) => {
                 Ok(Expr::Decl(Decl::Namespace(nsi.into_iter().collect())))
             },
@@ -1004,6 +1015,20 @@ impl_rdp! {
                 Ok(Expr::Use(clauses.into_iter().collect()))
             },
             (_: statement, st: _statement()) => st,
+        }
+
+        _optional_constant_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: constant_expression, e: _constant_expression()) => e,
+            () => Ok(Expr::None),
+        }
+
+        _static_variable_decls(&self) -> Result<LinkedList<(Cow<'input, str>, Expr<'input>)>, ParseError> {
+            (_: static_variable_declaration, _: variable_name, &v: name, e: _optional_constant_expression(), next: _static_variable_decls()) => {
+                let mut next = try!(next);
+                next.push_front((v.into(), try!(e)));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new()),
         }
 
         _class_extends(&self) -> Option<Path<'input>> {
