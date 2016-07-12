@@ -56,7 +56,8 @@ fn parse_stmt_if_else() {
 
     assert_eq!(process_stmt("if ($a) { a(); } else { b(); }"), make_result(block_expr, else_expr));
     assert_eq!(process_stmt("if ($a) a(); else b();"), make_result(main_call_expr, call_expr));
-    assert_eq!(process_stmt("if ($a) a(); else if ($b) b(); else c();"), Expr::If(
+    //if, elseif, else
+    let result2 = Expr::If(
         Box::new(Expr::Variable("a".into())),
         Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("a".into()))), vec![])),
         Box::new(
@@ -65,7 +66,9 @@ fn parse_stmt_if_else() {
                 Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![]))
             )
         )
-    ));
+    );
+    assert_eq!(process_stmt("if ($a) a(); else if ($b) b(); else c();"), result2);
+    assert_eq!(process_stmt("if ($a) a(); elseif ($b) b(); else c();"), result2);
 }
 
 #[test]

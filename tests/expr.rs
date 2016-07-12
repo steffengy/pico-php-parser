@@ -180,3 +180,11 @@ fn parse_expr_ternary() {
 fn parse_expr_cast() {
     assert_eq!(process_expr("(bool) $test"), Expr::Cast(Ty::Bool, Box::new(Expr::Variable("test".into()))));
 }
+
+#[test]
+fn parse_expr_assign() {
+    assert_eq!(process_expr("($b=4)"), Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(4))));
+    let negate_assign_result = Expr::UnaryOp(Op::Not, Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(1)))));
+    assert_eq!(process_expr("!($b=1)"), negate_assign_result);
+    assert_eq!(process_expr("!$b=1"), negate_assign_result);
+}

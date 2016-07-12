@@ -248,7 +248,7 @@ impl_rdp! {
 
         // Unary/Binary Operators from various sections rewritten to use precedence-climbing
         _exponentiation                 = _{
-            { cast_expression | (["("] ~ binary_expression ~ [")"]) | unary_expression }
+            { cast_expression | (["("] ~ assignment_expression ~ [")"]) | unary_expression }
             exponentiation = {< op_pow }
         }
         _unary                          = _{ unary | _exponentiation }
@@ -306,7 +306,8 @@ impl_rdp! {
 
         // Section: Assignment Operators
         assignment_expression           = {
-            coalesce_expression | byref_assignment_expression | simple_assignment_expression | compound_assignment_expression | conditional_expression
+            (unary_operator* ~ (coalesce_expression | byref_assignment_expression | simple_assignment_expression | compound_assignment_expression | ternary_expression)) |
+            binary_expression
         }
         simple_assignment_expression    = { unary_expression ~ ["="] ~ assignment_expression }
         byref_assignment_expression     = { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
@@ -593,13 +594,27 @@ impl_rdp! {
             (_: assignment_expression, e: _assignment_expression()) => e,
         }
 
-        _assignment_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: conditional_expression, e: _conditional_expression()) => e,
+        _unary_operators(&self) -> LinkedList<Op> {
+            (_: unary_operator, op, mut next: _unary_operators()) => {
+                next.push_front(rule_to_op(op.rule));
+                next
+            },
+            () => LinkedList::new(),
+        }
+
+        _assignment_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
             },
             (_: byref_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::AssignRef(Box::new(try!(ex)), Box::new(try!(ae))))
+            },
+            (e: _conditional_expression()) => e,
+        }
+
+        _assignment_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (u: _unary_operators(), e: _assignment_expression_internal()) => {
+                Ok(u.into_iter().fold(try!(e), |res, op| Expr::UnaryOp(op, Box::new(res))))
             }
         }
 
@@ -611,37 +626,21 @@ impl_rdp! {
         }
 
         _binary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: binary_expression, e: _binary_expression()) => e,
+            (_: assignment_expression, e: _assignment_expression()) => e,
             (_: cast_expression, _: cast_type, ty, _: expression, e: _expression()) => {
                 Ok(Expr::Cast(rule_to_ty(ty.rule), Box::new(try!(e))))
             },
             (_: unary, _: increment_or_decrement_op, op, operand: _binary_expression()) => {
-                Ok(Expr::UnaryOp(match op.rule {
-                    Rule::op_increment => Op::PreInc,
-                    Rule::op_decrement => Op::PreDec,
-                    _ => unreachable!()
-                }, Box::new(try!(operand))))
+                Ok(Expr::UnaryOp(rule_to_op(op.rule), Box::new(try!(operand))))
             },
             (_: unary, _: unary_operator, op, operand: _binary_expression()) => {
-                Ok(Expr::UnaryOp(match op.rule {
-                    Rule::op_not => Op::Not,
-                    _ => unreachable!()
-                }, Box::new(try!(operand))))
+                Ok(Expr::UnaryOp(rule_to_op(op.rule), Box::new(try!(operand))))
             },
             (_: additive_expression, left: _binary_expression(), op, right: _binary_expression()) => {
-                Ok(Expr::BinaryOp(match op.rule {
-                    Rule::op_add => Op::Add,
-                    Rule::op_sub => Op::Sub,
-                    _ => unreachable!()
-                }, Box::new(try!(left)), Box::new(try!(right))))
+                Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
             },
             (_: multiplicative_expression, left: _binary_expression(), op, right: _binary_expression()) => {
-                Ok(Expr::BinaryOp(match op.rule {
-                    Rule::op_mul => Op::Mul,
-                    Rule::op_div => Op::Div,
-                    Rule::op_mod => Op::Mod,
-                    _ => unreachable!()
-                }, Box::new(try!(left)), Box::new(try!(right))))
+                Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
             },
             (_: logical_inc_or_expression_1, left: _binary_expression(), _: op_logical_inc_or_1, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Or, Box::new(try!(left)), Box::new(try!(right))))
@@ -703,11 +702,7 @@ impl_rdp! {
 
         _postfix_expression(&self) -> Result<Expr<'input>, ParseError> {
             (e: _postfix_expression_idxs(), _: increment_or_decrement_op, op) => {
-                match op.rule {
-                    Rule::op_increment => Ok(Expr::UnaryOp(Op::PostInc, Box::new(try!(e)))),
-                    Rule::op_decrement => Ok(Expr::UnaryOp(Op::PostDec, Box::new(try!(e)))),
-                    _ => unreachable!(),
-                }
+                Ok(Expr::UnaryOp(rule_to_op_post(op.rule), Box::new(try!(e))))
             },
             (e: _postfix_expression_idxs()) => e,
         }
@@ -1287,6 +1282,28 @@ fn rule_to_ty(r: Rule) -> Ty {
         Rule::type_bool => Ty::Bool,
         Rule::type_callable => Ty::Callable,
         _ => unreachable!(),
+    }
+}
+
+fn rule_to_op(r: Rule) -> Op {
+    match r {
+        Rule::op_not => Op::Not,
+        Rule::op_increment => Op::PreInc,
+        Rule::op_decrement => Op::PreDec,
+        Rule::op_add => Op::Add,
+        Rule::op_sub => Op::Sub,
+        Rule::op_mul => Op::Mul,
+        Rule::op_div => Op::Div,
+        Rule::op_mod => Op::Mod,
+        _ => unreachable!(),
+    }
+}
+
+fn rule_to_op_post(r: Rule) -> Op {
+    match r {
+        Rule::op_increment => Op::PostInc,
+        Rule::op_decrement => Op::PostDec,
+        r => rule_to_op(r),
     }
 }
 
