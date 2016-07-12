@@ -41,6 +41,13 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::Exit(ref arg) => {
+                if let Expr::None = **arg {
+                    write!(f, "exit()")
+                } else {
+                    write!(f, "exit({})", arg)
+                }
+            },
             Expr::Echo(ref args) => {
                 try!(write!(f, "echo "));
                 try!(write_args(f, args));

@@ -134,7 +134,7 @@ impl_rdp! {
         // Section: Expressions
         // In the reference this contains "constant_expression", we use "array_creation_expression" to prevent infinite recursion
         primary_expression              =  {
-            intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
+            (["("] ~ assignment_expression ~ [")"]) | intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
             array_creation_expression |
             ["$this"]
         }
@@ -150,8 +150,8 @@ impl_rdp! {
         echo_intrinsic                  =  { ["echo"] ~ expression_list_one_or_more }
         empty_intrinsic                 =  { ["empty"] ~ ["("] ~ expression ~ [")"] }
         eval_intrinsic                  =  { ["eval"] ~ ["("] ~ expression ~ [")"] }
-        exit_or_die                     =  { ["exit"] | ["die"] }
-        exit_intrinsic                  =  { (exit_or_die ~ expression?) | (exit_or_die ~ ["("] ~ expression ~ [")"]) }
+        exit_or_die                     = _{ ["exit"] | ["die"] }
+        exit_intrinsic                  =  { (exit_or_die ~ ["("] ~ expression? ~ [")"]) | (exit_or_die ~ expression?) }
         isset_intrinsic                 =  { ["isset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
         expression_list_one_or_more     = _{ expression ~ ([","] ~ expression)* }
         list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ [")"] }
@@ -189,7 +189,7 @@ impl_rdp! {
         ref_expression                  =  { ["&"] ~ assignment_expression }
         clone_expression                =  { ["clone"] ~ expression }
         object_creation_expression      =  {
-            ( ["new"] ~ class_type_designator ~ ["("] ~ (!function_call_end ~ argument_expression_list)? ~ function_call_end ) |
+            ( ["new"] ~ class_type_designator ~ function_call? ) |
             ( ["new"] ~ ["class"] ~ ["("] ~ argument_expression_list? ~ [")"] ~ class_base_clause? ~ class_interface_clause? ~ (["{"] ~ ["}"])? ) | //TODO: weird?
             ( ["new"] ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? ~ ["}"] )
         }
@@ -203,7 +203,7 @@ impl_rdp! {
         subscript                       =  { ["["] ~ expression? ~ subscript_end }
         subscript_end                   =  { ["]"] }
         function_call_expression        =  { qualified_name ~ function_call }
-        function_call                   =  { ["("] ~ (![")"] ~ argument_expression_list)? ~ function_call_end }
+        function_call                   =  { ["("] ~ argument_expression_list? ~ function_call_end }
         function_call_end               =  { [")"] }
         argument_expression_list        = _{ (argument_expression ~ ([","] ~ argument_expression)*) }
         argument_expression             =  { variadic_unpacking | assignment_expression }
@@ -248,7 +248,7 @@ impl_rdp! {
 
         // Unary/Binary Operators from various sections rewritten to use precedence-climbing
         _exponentiation                 = _{
-            { cast_expression | (["("] ~ assignment_expression ~ [")"]) | unary_expression }
+            { cast_expression | unary_expression }
             exponentiation = {< op_pow }
         }
         _unary                          = _{ unary | _exponentiation }
@@ -378,7 +378,7 @@ impl_rdp! {
         }
 
         // Section: Compound Statement
-        compound_statement              =  { ["{"] ~ (!["}"] ~ statement_list)? ~ compound_statement_end }
+        compound_statement              =  { ["{"] ~ statement_list? ~ compound_statement_end }
         compound_statement_end          =  { ["}"] }
         statement_list                  = _{ statement+ }
 
@@ -488,7 +488,7 @@ impl_rdp! {
         default_argument_specifier      =  { ["="] ~ constant_expression }
 
         // Section: Classes
-        class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ (!["}"] ~ class_member_declarations)? ~ ["}"] }
+        class_declaration               =  { class_modifier? ~ ["class"] ~ name ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? ~ ["}"] }
         class_modifier                  =  { class_modifier_abstract | class_modifier_final }
         class_modifier_abstract         =  { ["abstract"] }
         class_modifier_final            =  { ["final"] }
@@ -649,7 +649,6 @@ impl_rdp! {
         }
 
         _binary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: assignment_expression, e: _assignment_expression()) => e,
             (_: cast_expression, _: cast_type, ty, _: expression, e: _expression()) => {
                 Ok(Expr::Cast(rule_to_ty(ty.rule), Box::new(try!(e))))
             },
@@ -714,9 +713,10 @@ impl_rdp! {
         _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
             (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
-            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), args: _call_args(), _: function_call_end) => {
+            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name(), _: function_call, args: _call_args(), _: function_call_end) => {
                 Ok(Expr::New(qualified_name_to_path(qn), try!(args).into_iter().collect()))
             },
+            (_: object_creation_expression, _:  qualified_name, qn: _qualified_name()) => Ok(Expr::New(qualified_name_to_path(qn), vec![])),
             (_: array_creation_expression, values: _array_element_initializers()) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
             }
@@ -852,6 +852,7 @@ impl_rdp! {
         }
 
         _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
+            (_: assignment_expression, e: _assignment_expression()) => e,
             (_: intrinsic, i: _intrinsic()) => i,
             (_: anonym_func_creation_expression, ret_ref: _function_definition_return_ref(), params: _function_definition_params(), _: function_definition_param_end,
                 use_clause: _anonym_func_use_clause(), _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
@@ -883,6 +884,9 @@ impl_rdp! {
             },
             (_: empty_intrinsic, _: expression, arg: _expression()) => {
                 Ok(Expr::Empty(Box::new(try!(arg))))
+            },
+            (_: exit_intrinsic, e: _optional_expression()) => {
+                Ok(Expr::Exit(Box::new(try!(e))))
             }
         }
 
@@ -1443,7 +1447,8 @@ pub fn process_script(input: &str) -> Vec<ParsedItem> {
     let mut parser = Rdp::new(StringInput::new(input));
     if !parser.script() {
         println!("{:?}", parser.input().line_col(parser.input().pos()));
-        panic!("failed");
+        let expc = parser.expected();
+        panic!("failed {:?} {:?}", expc, parser.input().line_col(expc.1));
     }
     //println!("{:?} @{}", parser.queue(), parser.input().pos());
     println!("{:?}", parser.input().line_col(parser.input().pos()));

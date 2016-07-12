@@ -140,6 +140,9 @@ fn parse_expr_closure() {
         params: vec![],
         body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![])], usev: vec![], ret_ref: false,
     }));
+    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr::ObjMember(Box::new(Expr::New(Path::Identifier("Factory".into()), vec![])),
+        vec![Expr::Path(Path::Identifier("test".into()))])
+    );
 }
 
 #[test]
@@ -154,6 +157,7 @@ fn parse_ns_identifier() {
 fn parse_expr_new() {
     assert_eq!(process_expr("new TestA()"), Expr::New(Path::Identifier("TestA".into()), vec![]));
     assert_eq!(process_expr("new Foo\\Bar()"), Expr::New(Path::NsIdentifier("Foo".into(), "Bar".into()), vec![]));
+    assert_eq!(process_expr("new Foo"), Expr::New(Path::Identifier("Foo".into()), vec![]));
 }
 
 #[test]

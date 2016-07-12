@@ -286,6 +286,7 @@ fn parse_unset_statement() {
 #[test]
 fn parse_stmt_throw() {
     assert_eq!(process_stmt(r#"throw new Exception("test");"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![Expr::String("test".into())]))));
+    assert_eq!(process_stmt(r#"throw new Exception;"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![]))));
 }
 
 #[test]
@@ -294,4 +295,16 @@ fn parse_stmt_include() {
     assert_eq!(process_stmt("include_once($test);"), Expr::Include(IncludeTy::IncludeOnce, Box::new(Expr::Variable("test".into()))));
     assert_eq!(process_stmt("require($test);"), Expr::Include(IncludeTy::Require, Box::new(Expr::Variable("test".into()))));
     assert_eq!(process_stmt("require_once $test;"), Expr::Include(IncludeTy::RequireOnce, Box::new(Expr::Variable("test".into()))));
+}
+
+#[test]
+fn parse_stmt_exit() {
+    assert_eq!(process_stmt("exit;"), Expr::Exit(Box::new(Expr::None)));
+    assert_eq!(process_stmt("exit true;"), Expr::Exit(Box::new(Expr::True)));
+    assert_eq!(process_stmt("exit(true);"), Expr::Exit(Box::new(Expr::True)));
+}
+
+#[test]
+fn parse_stmt_new_as_param() {
+    assert_eq!(process_stmt("r(new Foo);"), Expr::Call(Box::new(Expr::Path(Path::Identifier("r".into()))), vec![Expr::New(Path::Identifier("Foo".into()), vec![])]));
 }

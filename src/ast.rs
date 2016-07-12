@@ -102,6 +102,7 @@ pub enum Expr<'a> {
     Reference(Box<Expr<'a>>),
     Block(Vec<Expr<'a>>),
     Use(Vec<UseClause<'a>>),
+    Exit(Box<Expr<'a>>),
     Echo(Vec<Expr<'a>>),
     Isset(Vec<Expr<'a>>),
     Empty(Box<Expr<'a>>),
