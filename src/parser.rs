@@ -144,16 +144,16 @@ impl_rdp! {
         constant_false                  =  { ["false"] }
         constant_null                   =  { ["null"] }
         intrinsic                       =  { intrinsic_construct | intrinsic_operator }
-        intrinsic_construct             =  { echo_intrinsic | list_intrinsic | unset_intrinsic }
-        intrinsic_operator              =  { array_intrinsic | empty_intrinsic | eval_intrinsic | exit_intrinsic | isset_intrinsic | print_intrinsic }
+        intrinsic_construct             = _{ echo_intrinsic | list_intrinsic | unset_intrinsic }
+        intrinsic_operator              = _{ array_intrinsic | empty_intrinsic | eval_intrinsic | exit_intrinsic | isset_intrinsic | print_intrinsic }
         array_intrinsic                 =  { ["array"] ~ ["("] ~ array_initializer? ~ [")"] }
-        echo_intrinsic                  =  { ["echo"] ~ (expression ~ ([","] ~ expression)*) }
+        echo_intrinsic                  =  { ["echo"] ~ expression_list_one_or_more }
         empty_intrinsic                 =  { ["empty"] ~ ["("] ~ expression ~ [")"] }
         eval_intrinsic                  =  { ["eval"] ~ ["("] ~ expression ~ [")"] }
         exit_or_die                     =  { ["exit"] | ["die"] }
         exit_intrinsic                  =  { (exit_or_die ~ expression?) | (exit_or_die ~ ["("] ~ expression ~ [")"]) }
         isset_intrinsic                 =  { ["isset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
-        expression_list_one_or_more     =  { expression | (expression_list_one_or_more ~ [","] ~ expression) }
+        expression_list_one_or_more     = _{ expression ~ ([","] ~ expression)* }
         list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ [")"] }
         list_expression_list            =  {
             (list_or_variable | keyed_list_expression | list_item_empty) ~ (
@@ -834,7 +834,13 @@ impl_rdp! {
         }
 
         _intrinsic(&self) -> Result<Expr<'input>, ParseError> {
-            (_: intrinsic_construct, ic: _intrinsic_construct()) => ic,
+            (_: list_intrinsic, e: _list_intrinsic()) => e,
+            (_: echo_intrinsic, args: _multiple_expressions()) => {
+                Ok(Expr::Echo(try!(args).into_iter().collect()))
+            },
+            (_: isset_intrinsic, args: _multiple_expressions()) => {
+                Ok(Expr::Isset(try!(args).into_iter().collect()))
+            },
         }
 
         _list_or_variable(&self) -> Result<Expr<'input>, ParseError> {
@@ -864,13 +870,6 @@ impl_rdp! {
         _list_intrinsic(&self) -> Result<Expr<'input>, ParseError> {
             (_: list_expression_list, items: _list_items()) => {
                 Ok(Expr::List(try!(items).into_iter().collect()))
-            }
-        }
-
-        _intrinsic_construct(&self) -> Result<Expr<'input>, ParseError> {
-            (_: list_intrinsic, e: _list_intrinsic()) => e,
-            (_: echo_intrinsic, args: _multiple_expressions()) => {
-                Ok(Expr::Echo(try!(args).into_iter().collect()))
             }
         }
 

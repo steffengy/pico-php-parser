@@ -188,3 +188,8 @@ fn parse_expr_assign() {
     assert_eq!(process_expr("!($b=1)"), negate_assign_result);
     assert_eq!(process_expr("!$b=1"), negate_assign_result);
 }
+
+#[test]
+fn parse_expr_isset() {
+    assert_eq!(process_expr("isset($b)"), Expr::Isset(vec![Expr::Variable("b".into())]));
+}

@@ -49,6 +49,14 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, ";")
             },
+            Expr::Isset(ref args) => {
+                try!(write!(f, "isset("));
+                for (i, arg) in args.iter().enumerate() {
+                    try!(write_comma_separator(f, i));
+                    try!(write!(f, "{}", arg));
+                }
+                write!(f, ")")
+            },
             Expr::Return(ref arg) => {
                 try!(write!(f, "return"));
                 match **arg {
