@@ -54,7 +54,7 @@ impl_rdp! {
         script                          =  { soi ~ script_section+ ~ eoi }
         start_tag                       = _{ ["<?php"] | ["<?="] }
         end_tag                         = _{ ["?>"] }
-        script_section                  =  { text? ~ start_tag ~ statement_list? ~ end_tag? ~ text? }
+        script_section                  =  { text? ~ start_tag ~ statement_list? ~ (end_tag ~ text?)? }
         text                            =  { (!start_tag ~ any)+ }
 
         // Section: Names
