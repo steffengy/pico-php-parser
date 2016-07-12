@@ -295,7 +295,16 @@ impl<'a> fmt::Display for FunctionDecl<'a> {
             try!(write_comma_separator(f, i));
             try!(write!(f, "{}", param));
         }
-        try!(write!(f, ") {{\n"));
+        try!(write!(f, ")"));
+        if self.usev.len() > 0 {
+            try!(write!(f, " use ("));
+            for (i, usev) in self.usev.iter().enumerate() {
+                try!(write_comma_separator(f, i));
+                try!(write!(f, "${}", usev));
+            }
+            try!(write!(f, ") "));
+        }
+        try!(write!(f, "{{\n"));
         let mut i_str = String::new();
         for item in &self.body {
             try!(write!(i_str, "{};\n", item));
@@ -307,7 +316,15 @@ impl<'a> fmt::Display for FunctionDecl<'a> {
 
 impl<'a> fmt::Display for ParamDefinition<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "${}", self.name)
+        match self.ty {
+            None => (),
+            Some(ref ty) => try!(write!(f, "{} ", ty)),
+        }
+        try!(write!(f, "${}", self.name));
+        match self.default {
+            Expr::None => Ok(()),
+            ref def => write!(f, " = {}", def),
+        }
     }
 }
 
@@ -343,6 +360,13 @@ impl<'a> fmt::Display for ClassDecl<'a> {
         try!(write!(f, "class {}", self.name));
         if let Some(ref base_class) = self.base_class {
             try!(write!(f, " extends {}", base_class));
+        }
+        if self.implements.len() > 0 {
+            try!(write!(f, " implements "));
+            for (i, iface) in self.implements.iter().enumerate() {
+                try!(write_comma_separator(f, i));
+                try!(write!(f, "{}", iface));
+            }
         }
         try!(write!(f, " {{\n"));
         let mut i_str = String::new();
