@@ -225,6 +225,12 @@ fn parse_stmt_try() {
         vec![CatchClause { ty: Path::Identifier("Exception".into()), var: "e".into(), block: Expr::Block(vec![Expr::Return(Box::new(Expr::False))]) }],
         Box::new(Expr::None),
     ));
+    assert_eq!(process_stmt("try { echo \"ok\"; } catch (Exception $e) { return false; } catch (Throwable $e) { return true; }"), Expr::Try(
+        Box::new(Expr::Block(vec![Expr::Echo(vec![Expr::String("ok".into())])])),
+        vec![CatchClause { ty: Path::Identifier("Exception".into()), var: "e".into(), block: Expr::Block(vec![Expr::Return(Box::new(Expr::False))]) },
+            CatchClause { ty: Path::Identifier("Throwable".into()), var: "e".into(), block: Expr::Block(vec![Expr::Return(Box::new(Expr::True))]) }],
+        Box::new(Expr::None),
+    ));
 }
 
 #[test]
@@ -280,4 +286,12 @@ fn parse_unset_statement() {
 #[test]
 fn parse_stmt_throw() {
     assert_eq!(process_stmt(r#"throw new Exception("test");"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![Expr::String("test".into())]))));
+}
+
+#[test]
+fn parse_stmt_include() {
+    assert_eq!(process_stmt("include $test;"), Expr::Include(IncludeTy::Include, Box::new(Expr::Variable("test".into()))));
+    assert_eq!(process_stmt("include_once($test);"), Expr::Include(IncludeTy::IncludeOnce, Box::new(Expr::Variable("test".into()))));
+    assert_eq!(process_stmt("require($test);"), Expr::Include(IncludeTy::Require, Box::new(Expr::Variable("test".into()))));
+    assert_eq!(process_stmt("require_once $test;"), Expr::Include(IncludeTy::RequireOnce, Box::new(Expr::Variable("test".into()))));
 }

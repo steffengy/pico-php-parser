@@ -1,5 +1,5 @@
 use std::fmt::{self, Write};
-use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, UnaryOp, Op, Visibility};
+use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, IncludeTy, UseClause, UnaryOp, Op, Visibility};
 
 impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -80,6 +80,15 @@ impl<'a> fmt::Display for Expr<'a> {
                     _ => write!(f, "continue {};", amount),
                 }
             },
+            Expr::Include(ref ty, ref expr) => {
+                let fn_ = match *ty {
+                    IncludeTy::Include => "include",
+                    IncludeTy::Require => "require",
+                    IncludeTy::RequireOnce => "require_once",
+                    IncludeTy::IncludeOnce => "include_once",
+                };
+                write!(f, "{} {}", fn_, expr)
+            },
             Expr::ArrayIdx(ref obj, ref items) => {
                 try!(write!(f, "{}", obj));
                 for item in items {
@@ -128,8 +137,11 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 let op_str = match *operator {
                     UnaryOp::Not => "!",
+                    UnaryOp::BitwiseNot => "~",
                     UnaryOp::PreInc => "++",
                     UnaryOp::PreDec => "--",
+                    UnaryOp::Positive => "+",
+                    UnaryOp::Negative => "-",
                     UnaryOp::PostInc | UnaryOp::PostDec => unreachable!(),
                 };
                 write!(f, "{}({})", op_str, expr)
@@ -263,6 +275,8 @@ impl fmt::Display for Op {
             Op::Le => "<=",
             Op::Ge => ">=",
             Op::Spaceship => "<=>",
+            Op::BitwiseInclOr => "|",
+            Op::BitwiseExclOr => "^",
             Op::Instanceof => unreachable!(),
         })
     }

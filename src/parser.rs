@@ -4,7 +4,7 @@ use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
 use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, UnaryOp,
-    Op, ParsedItem, ParamDefinition, Path, Ty, TraitUse, UseClause, Visibility};
+    Op, ParsedItem, ParamDefinition, Path, Ty, IncludeTy, TraitUse, UseClause, Visibility};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -231,7 +231,7 @@ impl_rdp! {
         unary_expression                =  {
             unary_expression_internal ~ instanceof_expression?
         }
-        unary_operator                  =  { op_add | op_sub | op_not | ["~"] }
+        unary_operator                  =  { op_add | op_sub | op_not | op_bitwise_not }
         error_control_expression        =  { ["@"] ~ expression }
         shell_command_expression        =  { ["`"] ~ dq_char* ~ ["`"] }
         cast_expression                 =  { ["("] ~ cast_type ~ [")"] ~ expression }
@@ -261,12 +261,13 @@ impl_rdp! {
             bitwise_exc_or_expression   =  { op_bitwise_exc_or }
             bitwise_and_expression      =  { op_bitwise_and }
             equality_expression         =  { op_equality_identical | op_equality_not_identical | op_equality_eq | op_equality_neq | op_equality_uneq }
-            relational_expression       =  { op_lt | op_gt | op_le | op_ge | op_spaceship }
+            relational_expression       =  { op_spaceship | op_le | op_ge | op_lt | op_gt }
             shift_expression            =  { op_shr | op_shl }
             additive_expression         =  { op_add | op_sub | op_concat }
             multiplicative_expression   =  { op_mul | op_div | op_mod }
         }
         op_not                          =  { ["!"] }
+        op_bitwise_not                  =  { ["~"] }
         op_logical_inc_or_1             =  { ["||"] }
         op_and                          =  { ["&&"] }
         op_bitwise_inc_or               =  { ["|"] }
@@ -356,7 +357,7 @@ impl_rdp! {
 
         // Section: Script Inclusion Operators
         expression                      = {
-            yield_expression | include_expression | include_once_expression | require_expression | require_once_expression
+            include_once_expression | include_expression | require_once_expression | require_expression | yield_expression
         }
         expression_or_braced_expression = _{ (["("] ~ expression ~ [")"]) | expression }
         include_expression              =  { ["include"] ~ expression_or_braced_expression }
@@ -589,6 +590,10 @@ impl_rdp! {
 
         _expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: yield_expression, e: _yield_expression()) => e,
+            (_: include_expression, _: expression, e: _expression()) => Ok(Expr::Include(IncludeTy::Include, Box::new(try!(e)))),
+            (_: include_once_expression, _: expression, e: _expression()) => Ok(Expr::Include(IncludeTy::IncludeOnce, Box::new(try!(e)))),
+            (_: require_expression, _: expression, e: _expression()) => Ok(Expr::Include(IncludeTy::Require, Box::new(try!(e)))),
+            (_: require_once_expression, _: expression, e: _expression()) => Ok(Expr::Include(IncludeTy::RequireOnce, Box::new(try!(e)))),
             (_: expression, e: _expression()) => e,
         }
 
@@ -671,6 +676,12 @@ impl_rdp! {
             },
             (_: logical_and_expression, left: _binary_expression(), _: op_and, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::And, Box::new(try!(left)), Box::new(try!(right))))
+            },
+            (_: bitwise_inc_or_expression, left: _binary_expression(), _: op_bitwise_inc_or, right: _binary_expression()) => {
+                Ok(Expr::BinaryOp(Op::BitwiseInclOr, Box::new(try!(left)), Box::new(try!(right))))
+            },
+            (_: bitwise_exc_or_expression, left: _binary_expression(), _: op_bitwise_inc_or, right: _binary_expression()) => {
+                Ok(Expr::BinaryOp(Op::BitwiseExclOr, Box::new(try!(left)), Box::new(try!(right))))
             },
             (_: exponentiation, left: _binary_expression(), _: op_pow, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Pow, Box::new(try!(left)), Box::new(try!(right))))
@@ -1410,6 +1421,9 @@ fn rule_to_op(r: Rule) -> Op {
 fn rule_to_unary_op(r: Rule) -> UnaryOp {
     match r {
         Rule::op_not => UnaryOp::Not,
+        Rule::op_add => UnaryOp::Negative,
+        Rule::op_bitwise_not => UnaryOp::BitwiseNot,
+        Rule::op_sub => UnaryOp::Positive,
         Rule::op_increment => UnaryOp::PreInc,
         Rule::op_decrement => UnaryOp::PreDec,
         _ => unreachable!(),

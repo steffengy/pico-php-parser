@@ -47,6 +47,10 @@ pub enum Op {
     Gt,
     Le,
     Ge,
+    // bitwise
+    BitwiseInclOr,
+    /// XOR
+    BitwiseExclOr,
     /// spaceship operator, <=>
     Spaceship,
     Instanceof,
@@ -54,11 +58,14 @@ pub enum Op {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
+    Positive,
+    Negative,
     Not,
     PreInc,
     PreDec,
     PostInc,
     PostDec,
+    BitwiseNot,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,6 +114,7 @@ pub enum Expr<'a> {
     Break(usize),
     Continue(usize),
 
+    Include(IncludeTy, Box<Expr<'a>>),
     ArrayIdx(Box<Expr<'a>>, Vec<Expr<'a>>),
     ObjMember(Box<Expr<'a>>, Vec<Expr<'a>>),
     StaticMember(Box<Expr<'a>>, Vec<Expr<'a>>),
@@ -155,6 +163,14 @@ pub enum Ty<'a> {
     Double,
     String,
     Object(Option<Path<'a>>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IncludeTy {
+    Include,
+    IncludeOnce,
+    Require,
+    RequireOnce,
 }
 
 #[derive(Clone, Debug, PartialEq)]
