@@ -42,6 +42,13 @@ pub enum Op {
     Eq,
     Neq,
     Uneq,
+    // relational
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    /// spaceship operator, <=>
+    Spaceship,
     // pre/post
     PreInc,
     PreDec,
@@ -86,6 +93,7 @@ pub enum Expr<'a> {
     Use(Vec<UseClause<'a>>),
     Echo(Vec<Expr<'a>>),
     Isset(Vec<Expr<'a>>),
+    Unset(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
     Throw(Box<Expr<'a>>),
     Break(usize),
@@ -184,6 +192,7 @@ pub enum Decl<'a> {
     Namespace(Vec<Cow<'a, str>>),
     GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
     Class(ClassDecl<'a>),
+    Interface(Cow<'a, str>, Vec<Path<'a>>, Vec<ClassMember<'a>>),
     Trait(Cow<'a, str>, Vec<ClassMember<'a>>),
 }
 

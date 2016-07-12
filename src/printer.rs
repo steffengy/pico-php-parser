@@ -43,18 +43,17 @@ impl<'a> fmt::Display for Expr<'a> {
             },
             Expr::Echo(ref args) => {
                 try!(write!(f, "echo "));
-                for (i, arg) in args.iter().enumerate() {
-                    try!(write_comma_separator(f, i));
-                    try!(write!(f, "{}", arg));
-                }
+                try!(write_args(f, args));
                 write!(f, ";")
             },
             Expr::Isset(ref args) => {
                 try!(write!(f, "isset("));
-                for (i, arg) in args.iter().enumerate() {
-                    try!(write_comma_separator(f, i));
-                    try!(write!(f, "{}", arg));
-                }
+                try!(write_args(f, args));
+                write!(f, ")")
+            },
+            Expr::Unset(ref args) => {
+                try!(write!(f, "unset("));
+                try!(write_args(f, args));
                 write!(f, ")")
             },
             Expr::Return(ref arg) => {
@@ -110,18 +109,12 @@ impl<'a> fmt::Display for Expr<'a> {
             },
             Expr::Call(ref obj, ref args) => {
                 try!(write!(f, "{}(", obj));
-                for (i, arg) in args.iter().enumerate() {
-                    try!(write_comma_separator(f, i));
-                    try!(write!(f, "{}", arg));
-                }
+                try!(write_args(f, args));
                 write!(f, ")")
             },
             Expr::New(ref path, ref args) => {
                 try!(write!(f, "new {}(", path));
-                for (i, arg) in args.iter().enumerate() {
-                    try!(write_comma_separator(f, i));
-                    try!(write!(f, "{}", arg));
-                }
+                try!(write_args(f, args));
                 write!(f, ")")
             },
             Expr::UnaryOp(ref operator, ref expr) => {
@@ -284,6 +277,21 @@ impl<'a> fmt::Display for Decl<'a> {
                 write!(f, "{}", decl)
             },
             Decl::Class(ref decl) => write!(f, "{}", decl),
+            Decl::Interface(ref name, ref implements, ref members) => {
+                try!(write!(f, "interface {}", name));
+                if implements.len() > 0 {
+                    try!(write!(f, " extends "));
+                    for (i, iface) in implements.iter().enumerate() {
+                        try!(write_comma_separator(f, i));
+                        try!(write!(f, "{}", iface));
+                    }
+                }
+                try!(write!(f, " {{\n"));
+                for member in members {
+                    try!(write!(f, "{}\n", member));
+                }
+                write!(f, "}}\n")
+            },
             Decl::Trait(ref name, ref members) => {
                 try!(write!(f, "trait {} {{\n", name));
                 for member in members {
@@ -427,6 +435,15 @@ impl <'a> fmt::Display for ParsedItem<'a> {
 fn write_comma_separator<W: Write>(writer: &mut W, i: usize) -> fmt::Result {
     if i > 0 {
         try!(write!(writer, ", "));
+    }
+    Ok(())
+}
+
+#[inline]
+fn write_args<W: Write>(writer: &mut W, args: &[Expr]) -> fmt::Result {
+    for (i, arg) in args.iter().enumerate() {
+        try!(write_comma_separator(writer, i));
+        try!(write!(writer, "{}", arg));
     }
     Ok(())
 }

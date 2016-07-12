@@ -168,6 +168,11 @@ fn parse_trait_decl() {
 }
 
 #[test]
+fn parse_interface_decl() {
+    assert_eq!(process_stmt("interface ITest {}"), Expr::Decl(Decl::Interface("ITest".into(), vec![], vec![])));
+}
+
+#[test]
 fn parse_class_trait_use() {
     assert_eq!(process_stmt("class Test { use Abc; }"), Expr::Decl(Decl::Class(ClassDecl { name: "Test".into(), base_class: None, implements: vec![], members: vec![
         ClassMember::TraitUse(vec![Path::Identifier("Abc".into())], vec![])
@@ -239,6 +244,11 @@ fn parse_list_statement() {
     assert_eq!(process_stmt("list($a, $b) = test();"), Expr::Assign(Box::new(Expr::List(
         vec![(Expr::None, Expr::Variable("a".into())), (Expr::None, Expr::Variable("b".into()))]
     )), Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![]))));
+}
+
+#[test]
+fn parse_unset_statement() {
+    assert_eq!(process_stmt("unset($a);"), Expr::Unset(vec![Expr::Variable("a".into())]));
 }
 
 #[test]

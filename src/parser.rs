@@ -59,7 +59,7 @@ impl_rdp! {
 
         // Section: Names
         variable_name                   =  { ["$"] ~ name }
-        name                            = @{ nondigit_silent ~ (digit_silent | nondigit_silent)* } //TODO: U+007f–U+00ff (name_nondigit)
+        name                            = @{ nondigit_silent ~ (digit_silent | nondigit_silent)* } //TODO: U+0080–U+00ff (name_nondigit)
 
         //literal translation from reference: (does not work)
         //namespace_name                = @{ name | (namespace_name ~ ["\\"] ~ name) }
@@ -494,9 +494,8 @@ impl_rdp! {
         destructor_declaration          =  { method_modifiers ~ ["function"] ~ function_ret_reference? ~ ["__destruct"] ~ ["("] ~ [")"] ~ compound_statement }
 
         // Section: Interfaces
-        interface_declaration           =  { ["interface"] ~ name ~ interface_base_clause? ~ ["{"] ~ interface_member_declarations? ~ ["}"] }
-        interface_base_clause           =  { (["extends"] ~ qualified_name) | (interface_base_clause ~ [","] ~ qualified_name) }
-        interface_member_declarations   =  { interface_member_declaration | (interface_member_declarations ~ interface_member_declaration) }
+        interface_declaration           =  { ["interface"] ~ name ~ interface_base_clause? ~ ["{"] ~ interface_member_declaration* ~ ["}"] }
+        interface_base_clause           =  { ["extends"] ~ qualified_name ~ ([","] ~ qualified_name)* }
         interface_member_declaration    =  { const_declaration | method_declaration }
 
         // Section: Traits
@@ -641,6 +640,9 @@ impl_rdp! {
                 Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
             },
             (_: equality_expression, left: _binary_expression(), op, right: _binary_expression()) => {
+                Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
+            },
+            (_: relational_expression, left: _binary_expression(), op, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
             },
             (_: logical_inc_or_expression_1, left: _binary_expression(), _: op_logical_inc_or_1, right: _binary_expression()) => {
@@ -842,6 +844,9 @@ impl_rdp! {
             (_: isset_intrinsic, args: _multiple_expressions()) => {
                 Ok(Expr::Isset(try!(args).into_iter().collect()))
             },
+            (_: unset_intrinsic, args: _multiple_expressions()) => {
+                Ok(Expr::Unset(try!(args).into_iter().collect()))
+            },
         }
 
         _list_or_variable(&self) -> Result<Expr<'input>, ParseError> {
@@ -941,6 +946,9 @@ impl_rdp! {
                     members: try!(members).into_iter().collect(),
                 })))
             },
+            (_: interface_declaration, &name: name, implements: _interface_implements(), members: _interface_members()) => {
+                Ok(Expr::Decl(Decl::Interface(name.into(), implements, try!(members).into_iter().collect())))
+            },
             (_: trait_declaration, &name: name, members: _trait_members()) => {
                 Ok(Expr::Decl(Decl::Trait(name.into(),
                     try!(members).into_iter().collect(),
@@ -973,6 +981,11 @@ impl_rdp! {
             () => vec![],
         }
 
+        _interface_implements(&self) -> Vec<Path<'input>> {
+            (_: interface_base_clause, i: _class_implements_internal()) => i.into_iter().collect(),
+            () => vec![],
+        }
+
         _trait_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
             (_: trait_member_declaration, member: _class_member(), next: _trait_members()) => {
                 let mut next = try!(next);
@@ -984,6 +997,15 @@ impl_rdp! {
 
         _class_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
             (_: class_member_declaration, member: _class_member(), next: _class_members()) => {
+                let mut next = try!(next);
+                next.push_front(try!(member));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
+        _interface_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
+            (_: interface_member_declaration, member: _class_member(), next: _trait_members()) => {
                 let mut next = try!(next);
                 next.push_front(try!(member));
                 Ok(next)
@@ -1318,6 +1340,11 @@ fn rule_to_op(r: Rule) -> Op {
         Rule::op_equality_eq => Op::Eq,
         Rule::op_equality_neq => Op::Neq,
         Rule::op_equality_uneq => Op::Uneq,
+        Rule::op_lt => Op::Lt,
+        Rule::op_gt => Op::Gt,
+        Rule::op_le => Op::Le,
+        Rule::op_ge => Op::Ge,
+        Rule::op_spaceship => Op::Spaceship,
         _ => unreachable!(),
     }
 }
@@ -1333,7 +1360,10 @@ fn rule_to_op_post(r: Rule) -> Op {
 // HELPERS; TODO: move to tests files when visibility is added for these macros
 pub fn process_script(input: &str) -> Vec<ParsedItem> {
     let mut parser = Rdp::new(StringInput::new(input));
-    assert!(parser.script());
+    if !parser.script() {
+        println!("{:?}", parser.input().line_col(parser.input().pos()));
+        panic!("failed");
+    }
     //println!("{:?} @{}", parser.queue(), parser.input().pos());
     println!("{:?}", parser.input().line_col(parser.input().pos()));
     assert!(parser.end());
