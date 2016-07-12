@@ -111,6 +111,14 @@ fn parse_func_decl() {
 }
 
 #[test]
+fn parse_func_decl_typehint() {
+    assert_eq!(process_stmt("function test(Test $a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Path::Identifier("Test".into()))), default: Expr::None }],
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], })
+    ));
+}
+
+#[test]
 fn parse_class_decl() {
     assert_eq!(process_stmt("class Test {}"), Expr::Decl(Decl::Class(ClassDecl {
         name: "Test".into(), base_class: None, implements: vec![], members: vec![]

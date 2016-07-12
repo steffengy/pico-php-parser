@@ -260,7 +260,7 @@ impl_rdp! {
             bitwise_inc_or_expression   =  { op_bitwise_inc_or }
             bitwise_exc_or_expression   =  { op_bitwise_exc_or }
             bitwise_and_expression      =  { op_bitwise_and }
-            equality_expression         =  { op_equality_eq | op_equality_neq | op_equality_uneq | op_equality_identical | op_equality_not_identical }
+            equality_expression         =  { op_equality_identical | op_equality_not_identical | op_equality_eq | op_equality_neq | op_equality_uneq }
             relational_expression       =  { op_lt | op_gt | op_le | op_ge | op_spaceship }
             shift_expression            =  { op_shr | op_shl }
             additive_expression         =  { op_add | op_sub }
@@ -1141,9 +1141,12 @@ impl_rdp! {
             () => false,
         }
 
-        _function_definition_param_ty(&self) -> Option<Ty> {
+        _function_definition_param_ty(&self) -> Option<Ty<'input>> {
             (_: type_declaration, _: type_declaration_ty, ty) => {
                 Some(rule_to_ty(ty.rule))
+            },
+            (_: type_declaration, _: qualified_name, qn: _qualified_name()) => {
+                Some(Ty::Object(qualified_name_to_path(qn)))
             },
             () => None,
         }
@@ -1273,7 +1276,7 @@ fn qualified_name_to_path<'a>(mut args: Vec<Cow<'a, str>>) -> Path<'a> {
     }
 }
 
-fn rule_to_ty(r: Rule) -> Ty {
+fn rule_to_ty<'a>(r: Rule) -> Ty<'a> {
     match r {
         Rule::type_array => Ty::Array,
         Rule::type_string => Ty::String,
@@ -1311,7 +1314,8 @@ fn rule_to_op_post(r: Rule) -> Op {
 pub fn process_script(input: &str) -> Vec<ParsedItem> {
     let mut parser = Rdp::new(StringInput::new(input));
     assert!(parser.script());
-    println!("{:?} @{}", parser.queue(), parser.input().pos());
+    //println!("{:?} @{}", parser.queue(), parser.input().pos());
+    println!("{:?}", parser.input().line_col(parser.input().pos()));
     assert!(parser.end());
     parser.main().unwrap()
 }

@@ -209,16 +209,21 @@ impl<'a> fmt::Display for Expr<'a> {
     }
 }
 
-impl fmt::Display for Ty {
+impl<'a> fmt::Display for Ty<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
+        let str_ = match *self {
             Ty::Array => "array",
             Ty::Callable => "callable",
             Ty::Bool => "bool",
             Ty::Float => "float",
             Ty::Int => "int",
-            Ty::String => "string"
-        })
+            Ty::String => "string",
+            Ty::Object(ref p) => {
+                try!(write!(f, "{}", p));
+                ""
+            }
+        };
+        write!(f, "{}", str_)
     }
 }
 

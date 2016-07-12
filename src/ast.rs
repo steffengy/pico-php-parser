@@ -90,7 +90,7 @@ pub enum Expr<'a> {
     New(Path<'a>, Vec<Expr<'a>>),
     UnaryOp(Op, Box<Expr<'a>>),
     BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
-    Cast(Ty, Box<Expr<'a>>),
+    Cast(Ty<'a>, Box<Expr<'a>>),
     Function(FunctionDecl<'a>),
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
@@ -120,13 +120,14 @@ pub enum Expr<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Ty {
+pub enum Ty<'a> {
     Array,
     Callable,
     Bool,
     Float,
     Int,
     String,
+    Object(Path<'a>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -140,7 +141,7 @@ pub struct ParamDefinition<'a> {
     pub name: Cow<'a, str>,
     pub as_ref: bool,
     /// The type of the parameter
-    pub ty: Option<Ty>,
+    pub ty: Option<Ty<'a>>,
     /// The default value for the parameter
     pub default: Expr<'a>,
 }
