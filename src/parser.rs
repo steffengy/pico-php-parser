@@ -441,7 +441,7 @@ impl_rdp! {
         declare_directive               = { (["ticks"] | ["encoding"] | ["strict_types"]) ~ ["="] ~ literal }
 
         // Section: Functions
-        function_definition             =  { function_definition_header ~ compound_statement }
+        function_definition             = _{ function_definition_header ~ compound_statement }
         function_ret_reference          =  { ["&"] }
         function_definition_header      =  { ["function"] ~ function_ret_reference? ~ name ~ ["("] ~ parameter_declaration_list? ~ function_definition_param_end ~ return_type? }
         function_definition_param_end   =  { [")"] }
@@ -820,12 +820,13 @@ impl_rdp! {
 
         _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: intrinsic, i: _intrinsic()) => i,
-            (_: anonym_func_creation_expression, params: _function_definition_params(), _: function_definition_param_end, use_clause: _anonym_func_use_clause(),
-                _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
+            (_: anonym_func_creation_expression, ret_ref: _function_definition_return_ref(), params: _function_definition_params(), _: function_definition_param_end,
+                use_clause: _anonym_func_use_clause(), _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Function(FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
                     usev: use_clause.into_iter().collect(),
+                    ret_ref: ret_ref,
                 }))
             },
             (_: qualified_name, qn: _qualified_name()) => {
@@ -930,12 +931,13 @@ impl_rdp! {
             (_: iteration_statement, st: _iteration_statement()) => st,
             (_: try_statement, st: _try_statement()) => st,
             (_: compound_statement, st: _multiple_statements(), _: compound_statement_end) => Ok(Expr::Block(try!(st).into_iter().collect())),
-            (_: function_definition, _: function_definition_header, &name: name, params: _function_definition_params(),
+            (_: function_definition_header, ret_ref: _function_definition_return_ref(), &name: name, params: _function_definition_params(),
                 _: function_definition_param_end, _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
                 Ok(Expr::Decl(Decl::GlobalFunction(name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
                     body: try!(body).into_iter().collect(),
                     usev: vec![],
+                    ret_ref: ret_ref,
                 })))
             },
             (_: class_declaration, &name: name, base_clause: _class_extends(), implements: _class_implements(), members: _class_members()) => {
@@ -1013,17 +1015,27 @@ impl_rdp! {
             () => Ok(LinkedList::new())
         }
 
+        _optional_compound_statement(&self) -> Result<Vec<Expr<'input>>, ParseError> {
+            (_: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
+                Ok(try!(body).into_iter().collect())
+            },
+            () => Ok(vec![]),
+        }
+
         _class_member(&self) -> Result<ClassMember<'input>, ParseError> {
+            (_: const_declaration, &name: name, _: constant_expression, e: _constant_expression()) => {
+                Ok(ClassMember::Constant(name.into(), try!(e)))
+            },
             (_: property_declaration, modifiers: _modifiers(), _: variable_name, &name: name, default_value: _opt_property_value()) => {
                 Ok(ClassMember::Property(modifiers, name.into(), try!(default_value)))
             },
-            (_: method_declaration, modifiers: _modifiers(), _: function_definition, _: function_definition_header,
-                &name: name, params: _function_definition_params(), _: function_definition_param_end, _: compound_statement,
-                body: _multiple_statements(), _: compound_statement_end) => {
+            (_: method_declaration, modifiers: _modifiers(), _: function_definition_header, ret_ref: _function_definition_return_ref(),
+                &name: name, params: _function_definition_params(), _: function_definition_param_end, body: _optional_compound_statement()) => {
                 Ok(ClassMember::Method(modifiers, name.into(), FunctionDecl {
                     params: try!(params).into_iter().collect(),
-                    body: try!(body).into_iter().collect(),
+                    body: try!(body),
                     usev: vec![],
+                    ret_ref: ret_ref,
                 }))
             },
             (_: trait_use_clause, _: trait_name_list, list: _trait_name_list(), _: trait_use_specification, clauses: _trait_select_and_alias_clauses()) =>{
@@ -1171,6 +1183,11 @@ impl_rdp! {
         _else_clause(&self) -> Result<Expr<'input>, ParseError> {
             (_: else_clause_1, st: _statement()) => Ok(try!(st)),
             () => Ok(Expr::None),
+        }
+
+        _function_definition_return_ref(&self) -> bool {
+            (_: function_ret_reference) => true,
+            () => false,
         }
 
         _function_definition_param_as_ref(&self) -> bool {

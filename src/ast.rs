@@ -169,6 +169,7 @@ pub struct FunctionDecl<'a> {
     /// A list of variables to pass from the parent scope to the scope of this function
     /// So variables which are basically available shared into this function's scope
     pub usev: Vec<Cow<'a, str>>,
+    pub ret_ref: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -182,6 +183,7 @@ pub struct ClassDecl<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ClassMember<'a> {
+    Constant(Cow<'a, str>, Expr<'a>),
     Property(Modifiers, Cow<'a, str>, Expr<'a>),
     Method(Modifiers, Cow<'a, str>, FunctionDecl<'a>),
     TraitUse(Vec<Path<'a>>, Vec<TraitUse<'a>>),

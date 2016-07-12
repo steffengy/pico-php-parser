@@ -98,15 +98,18 @@ fn parse_stmt_foreach() {
 #[test]
 fn parse_func_decl() {
     assert_eq!(process_stmt("function test() { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: false, })
+    ));
+    assert_eq!(process_stmt("function &test() { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: true, })
     ));
     assert_eq!(process_stmt("function test($a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: false, })
     ));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: Expr::None }, ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: Expr::None }],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: false, })
     ));
 }
 
@@ -114,7 +117,7 @@ fn parse_func_decl() {
 fn parse_func_decl_typehint() {
     assert_eq!(process_stmt("function test(Test $a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Path::Identifier("Test".into()))), default: Expr::None }],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], })
+        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: false, })
     ));
 }
 
@@ -144,11 +147,19 @@ fn parse_class_properties() {
 }
 
 #[test]
+fn parse_class_const() {
+    assert_eq!(process_stmt("class Test { const C=true; }"), Expr::Decl(Decl::Class(ClassDecl {
+        name: "Test".into(), base_class: None, implements: vec![],
+        members: vec![ClassMember::Constant("C".into(), Expr::True)]
+    })));
+}
+
+#[test]
 fn parse_class_methods() {
     assert_eq!(process_stmt("class Test { public function a() { run(); } }"), Expr::Decl(Decl::Class(ClassDecl {
         name: "Test".into(), base_class: None, implements: vec![],
         members: vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None), "a".into(), FunctionDecl {
-            params: vec![], body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("run".into()))), vec![])], usev: vec![],
+            params: vec![], body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("run".into()))), vec![])], usev: vec![], ret_ref: false,
         })]
     })));
     assert_eq!(process_stmt("class Test { public function __construct(array $param1 = []) { $this->param = $param1; } }"), Expr::Decl(Decl::Class(ClassDecl {
@@ -157,7 +168,7 @@ fn parse_class_methods() {
             params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Expr::Array(vec![]) }],
             body: vec![Expr::Assign(Box::new(Expr::ObjMember(Box::new(Expr::Variable("this".into())), vec![
                 Expr::Path(Path::Identifier("param".into())) ])), Box::new(Expr::Variable("param1".into())))
-            ], usev: vec![],
+            ], usev: vec![], ret_ref: false,
         })]
     })));
 }
@@ -170,6 +181,11 @@ fn parse_trait_decl() {
 #[test]
 fn parse_interface_decl() {
     assert_eq!(process_stmt("interface ITest {}"), Expr::Decl(Decl::Interface("ITest".into(), vec![], vec![])));
+    assert_eq!(process_stmt("interface ITest { public function test(); }"), Expr::Decl(
+        Decl::Interface("ITest".into(), vec![], vec![ClassMember::Method(Modifiers(false, Visibility::Public, ClassModifier::None),
+            "test".into(), FunctionDecl {params: vec![], body: vec![], usev: vec![], ret_ref: false})
+        ])
+    ));
 }
 
 #[test]
@@ -181,7 +197,9 @@ fn parse_class_trait_use() {
 
 #[test]
 fn parse_stmt_closure_use() {
-    assert_eq!(process_stmt("return function () use ($t) {};"), Expr::Return(Box::new(Expr::Function(FunctionDecl { params: vec![], body: vec![], usev: vec!["t".into()] }))));
+    assert_eq!(process_stmt("return function () use ($t) {};"), Expr::Return(Box::new(Expr::Function(FunctionDecl {
+        params: vec![], body: vec![], usev: vec!["t".into()], ret_ref: false,
+    }))));
 }
 
 #[test]

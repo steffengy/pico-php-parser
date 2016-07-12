@@ -396,6 +396,9 @@ impl<'a> fmt::Display for ClassDecl<'a> {
 impl <'a> fmt::Display for ClassMember<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            ClassMember::Constant(ref name, ref value) => {
+                write!(f, "const {}={};", name, value)
+            },
             ClassMember::Property(ref modifiers, ref name, ref default) => {
                 try!(write!(f, "{} ${}", modifiers, name));
                 match *default {
