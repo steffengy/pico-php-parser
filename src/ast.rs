@@ -36,6 +36,12 @@ pub enum Op {
     And,
     // unary
     Not,
+    // equality
+    Identical,
+    NotIdentical,
+    Eq,
+    Neq,
+    Uneq,
     // pre/post
     PreInc,
     PreDec,
@@ -81,6 +87,7 @@ pub enum Expr<'a> {
     Echo(Vec<Expr<'a>>),
     Isset(Vec<Expr<'a>>),
     Return(Box<Expr<'a>>),
+    Throw(Box<Expr<'a>>),
     Break(usize),
     Continue(usize),
 

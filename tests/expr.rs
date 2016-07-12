@@ -68,6 +68,12 @@ fn parse_expr_array_idx() {
 }
 
 #[test]
+fn parse_expr_array_append() {
+    // for now we support append-expressions like that, TODO: figure out error reporting (AST_Node -> Position in source file)
+    assert_eq!(process_expr(r#"$test[]=1"#), Expr::Assign(Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("test".into())), vec![Expr::None])), Box::new(Expr::Int(1))));
+}
+
+#[test]
 fn parse_expr_func_call() {
     assert_eq!(process_expr(r#"func_x(1, 2)"#), Expr::Call(Box::new(Expr::Path(Path::Identifier("func_x".into()))), vec![Expr::Int(1), Expr::Int(2)]));
     assert_eq!(process_expr(r#"func_x(abc(1), 2)"#), Expr::Call(Box::new(Expr::Path(Path::Identifier("func_x".into()))), vec![

@@ -1,5 +1,5 @@
 use std::fmt::{self, Write};
-use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, Visibility};
+use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, Op, Visibility};
 
 impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -67,6 +67,9 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
+            Expr::Throw(ref arg) => {
+                write!(f, "throw {}", arg)
+            },
             Expr::Break(ref amount) => {
                 match *amount {
                     1 => write!(f, "break;"),
@@ -82,7 +85,12 @@ impl<'a> fmt::Display for Expr<'a> {
             Expr::ArrayIdx(ref obj, ref items) => {
                 try!(write!(f, "{}", obj));
                 for item in items {
-                    try!(write!(f, "[{}]", item));
+                    // for now we tolerate it, TODO: rework & verify that Expr::None is toleratable/valid at this point (on the parsing side)
+                    if let Expr::None = *item {
+                        try!(write!(f, "[]"));
+                    } else {
+                        try!(write!(f, "[{}]", item));
+                    }
                 }
                 Ok(())
             },
@@ -117,16 +125,26 @@ impl<'a> fmt::Display for Expr<'a> {
                 write!(f, ")")
             },
             Expr::UnaryOp(ref operator, ref expr) => {
-                match operator {
+                let op_str = match *operator {
+                    Op::Not => "!",
                     _ => panic!("op {:?} unsupported (unary)", operator)
-                }
-                Ok(())
+                };
+                write!(f, "{}({})", op_str, expr)
             },
             Expr::BinaryOp(ref operator, ref op1, ref op2) => {
-                match operator {
-                    _ => panic!("op {:?} unsupported (binary)", operator)
+                if let Op::Instanceof = *operator{
+                    try!(write!(f, "({}) instanceof {}", op1, op2));
+                    return Ok(())
                 }
-                Ok(())
+                let op_str = match *operator {
+                    Op::And => "&&",
+                    Op::Identical => "===",
+                    Op::NotIdentical => "!==",
+                    Op::Eq => "==",
+                    Op::Neq => "!=",
+                    _ => panic!("op {:?} unsupported (binary)", operator)
+                };
+                write!(f, "({}) {} ({})", op1, op_str, op2)
             },
             Expr::Cast(ref ty, ref e) => {
                 write!(f, "({}){}", ty, e)
@@ -135,10 +153,10 @@ impl<'a> fmt::Display for Expr<'a> {
                 write!(f, "function {}", decl)
             },
             Expr::Assign(ref obj, ref value) => {
-                write!(f, "{} = {};\n", obj, value)
+                write!(f, "{} = {}", obj, value)
             },
             Expr::AssignRef(ref obj, ref value) => {
-                write!(f, "{} = &({});\n", obj, value)
+                write!(f, "{} = &({})", obj, value)
             },
             Expr::If(ref condition, ref case_true, ref case_else) => {
                 try!(write!(f, "if ({}) {}", condition, case_true));
@@ -165,7 +183,7 @@ impl<'a> fmt::Display for Expr<'a> {
                 write!(f, "do {} while({});", body, condition)
             },
             Expr::ForEach(ref obj, ref k, ref v, ref body) => {
-                try!(write!(f, "foreach ({}", obj));
+                try!(write!(f, "foreach ({} as ", obj));
                 match **k {
                     Expr::None => (),
                     _ => try!(write!(f, "{} => ", k))
@@ -205,7 +223,7 @@ impl<'a> fmt::Display for Expr<'a> {
             Expr::Try(ref bl, ref clauses, ref finally) => {
                 try!(write!(f, "try {}", bl));
                 for clause in clauses {
-                    try!(write!(f, "catch ({} {}) {}", clause.ty, clause.var, clause.block));
+                    try!(write!(f, "catch ({} ${}) {}", clause.ty, clause.var, clause.block));
                 }
                 match **finally {
                     Expr::None => Ok(()),
@@ -350,7 +368,11 @@ impl <'a> fmt::Display for ClassMember<'a> {
             ClassMember::Method(ref modifiers, ref name, ref fdecl) => {
                 write!(f, "{} function {} {}", modifiers, name, fdecl)
             },
-            ClassMember::TraitUse(_, _) => unimplemented!(),
+            ClassMember::TraitUse(ref path, ref unsupported) => {
+                assert_eq!(unsupported.len(), 0);
+                assert_eq!(path.len(), 1);
+                write!(f, "use {};", path[0])
+            },
         }
     }
 }

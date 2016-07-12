@@ -235,3 +235,8 @@ fn parse_list_statement() {
         vec![(Expr::None, Expr::Variable("a".into())), (Expr::None, Expr::Variable("b".into()))]
     )), Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![]))));
 }
+
+#[test]
+fn parse_stmt_throw() {
+    assert_eq!(process_stmt(r#"throw new Exception("test");"#), Expr::Throw(Box::new(Expr::New(Path::Identifier("Exception".into()), vec![Expr::String("test".into())]))));
+}

@@ -642,6 +642,9 @@ impl_rdp! {
             (_: multiplicative_expression, left: _binary_expression(), op, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
             },
+            (_: equality_expression, left: _binary_expression(), op, right: _binary_expression()) => {
+                Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
+            },
             (_: logical_inc_or_expression_1, left: _binary_expression(), _: op_logical_inc_or_1, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Or, Box::new(try!(left)), Box::new(try!(right))))
             },
@@ -746,7 +749,7 @@ impl_rdp! {
         // general operation for anything behaving like an subscription (call, property-fetch, ...)
         // anything following a postfix_expression
         _post_exprs(&self) -> Result<LinkedList<IdxExpr<'input>>, ParseError> {
-            (_: subscript, _: expression, e: _expression(), _: subscript_end, next: _post_exprs()) => {
+            (_: subscript, e: _optional_expression(), _: subscript_end, next: _post_exprs()) => {
                 let mut next = try!(next);
                 next.push_front(IdxExpr::ArrayIdx(try!(e)));
                 Ok(next)
@@ -1071,6 +1074,7 @@ impl_rdp! {
         _jump_statement(&self) -> Result<Expr<'input>, ParseError> {
             (_: break_statement, lvl: _breakout_level()) => Ok(Expr::Break(try!(lvl))),
             (_: continue_statement, lvl: _breakout_level()) => Ok(Expr::Continue(try!(lvl))),
+            (_: throw_statement, _: expression, e: _expression()) => Ok(Expr::Throw(Box::new(try!(e)))),
             (_: return_statement, _: expression, e: _expression()) => Ok(Expr::Return(Box::new(try!(e)))),
             (_: return_statement) => Ok(Expr::Return(Box::new(Expr::None))),
         }
@@ -1297,6 +1301,11 @@ fn rule_to_op(r: Rule) -> Op {
         Rule::op_mul => Op::Mul,
         Rule::op_div => Op::Div,
         Rule::op_mod => Op::Mod,
+        Rule::op_equality_identical => Op::Identical,
+        Rule::op_equality_not_identical => Op::NotIdentical,
+        Rule::op_equality_eq => Op::Eq,
+        Rule::op_equality_neq => Op::Neq,
+        Rule::op_equality_uneq => Op::Uneq,
         _ => unreachable!(),
     }
 }
