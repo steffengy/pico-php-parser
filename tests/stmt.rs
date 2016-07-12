@@ -163,6 +163,11 @@ fn parse_class_methods() {
 }
 
 #[test]
+fn parse_trait_decl() {
+    assert_eq!(process_stmt("trait Test {}"), Expr::Decl(Decl::Trait("Test".into(), vec![])));
+}
+
+#[test]
 fn parse_class_trait_use() {
     assert_eq!(process_stmt("class Test { use Abc; }"), Expr::Decl(Decl::Class(ClassDecl { name: "Test".into(), base_class: None, implements: vec![], members: vec![
         ClassMember::TraitUse(vec![Path::Identifier("Abc".into())], vec![])

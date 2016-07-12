@@ -184,6 +184,7 @@ pub enum Decl<'a> {
     Namespace(Vec<Cow<'a, str>>),
     GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
     Class(ClassDecl<'a>),
+    Trait(Cow<'a, str>, Vec<ClassMember<'a>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

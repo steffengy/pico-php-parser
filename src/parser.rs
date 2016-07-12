@@ -500,11 +500,9 @@ impl_rdp! {
         interface_member_declaration    =  { const_declaration | method_declaration }
 
         // Section: Traits
-        trait_declaration               =  { ["trait"] ~ name ~ ["{"] ~ trait_member_declarations? ~ ["}"] }
-        trait_member_declarations       =  { trait_member_declaration | (trait_member_declarations ~ trait_member_declaration) }
-        trait_member_declaration        =  { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clauses }
+        trait_declaration               =  { ["trait"] ~ name ~ ["{"] ~ trait_member_declaration* ~ ["}"] }
+        trait_member_declaration        =  { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
         trait_use_clause                =  { ["use"] ~ trait_name_list ~ trait_use_specification }
-        trait_use_clauses               =  { trait_use_clause | (trait_use_clauses ~ trait_use_clause) }
         trait_name_list                 =  { qualified_name ~ ([","] ~ qualified_name)* }
         trait_use_specification         =  { [";"] | (["{"] ~ trait_select_and_alias_clause* ~ ["}"]) }
         trait_select_and_alias_clause   =  { (trait_select_insteadof_clause | trait_alias_as_clause) ~ [";"] }
@@ -943,6 +941,11 @@ impl_rdp! {
                     members: try!(members).into_iter().collect(),
                 })))
             },
+            (_: trait_declaration, &name: name, members: _trait_members()) => {
+                Ok(Expr::Decl(Decl::Trait(name.into(),
+                    try!(members).into_iter().collect(),
+                )))
+            },
             (_: namespace_definition, _: namespace_name, nsi: _namespace_name_item()) => {
                 Ok(Expr::Decl(Decl::Namespace(nsi.into_iter().collect())))
             },
@@ -968,6 +971,15 @@ impl_rdp! {
         _class_implements(&self) -> Vec<Path<'input>> {
             (_: class_interface_clause, i: _class_implements_internal()) => i.into_iter().collect(),
             () => vec![],
+        }
+
+        _trait_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {
+            (_: trait_member_declaration, member: _class_member(), next: _trait_members()) => {
+                let mut next = try!(next);
+                next.push_front(try!(member));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
         }
 
         _class_members(&self) -> Result<LinkedList<ClassMember<'input>>, ParseError> {

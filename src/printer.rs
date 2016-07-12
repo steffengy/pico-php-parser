@@ -283,7 +283,14 @@ impl<'a> fmt::Display for Decl<'a> {
                 try!(write!(f, "function {}", name));
                 write!(f, "{}", decl)
             },
-            Decl::Class(ref decl) => write!(f, "{}", decl)
+            Decl::Class(ref decl) => write!(f, "{}", decl),
+            Decl::Trait(ref name, ref members) => {
+                try!(write!(f, "trait {} {{\n", name));
+                for member in members {
+                    try!(write!(f, "{}\n", member));
+                }
+                write!(f, "}}\n")
+            },
         }
     }
 }
