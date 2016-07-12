@@ -139,15 +139,7 @@ impl<'a> fmt::Display for Expr<'a> {
                     try!(write!(f, "({}) instanceof {}", op1, op2));
                     return Ok(())
                 }
-                let op_str = match *operator {
-                    Op::And => "&&",
-                    Op::Identical => "===",
-                    Op::NotIdentical => "!==",
-                    Op::Eq => "==",
-                    Op::Neq => "!=",
-                    _ => panic!("op {:?} unsupported (binary)", operator)
-                };
-                write!(f, "({}) {} ({})", op1, op_str, op2)
+                write!(f, "({}) {} ({})", op1, operator, op2)
             },
             Expr::Cast(ref ty, ref e) => {
                 write!(f, "({}){}", ty, e)
@@ -157,6 +149,9 @@ impl<'a> fmt::Display for Expr<'a> {
             },
             Expr::Assign(ref obj, ref value) => {
                 write!(f, "{} = {}", obj, value)
+            },
+            Expr::CompoundAssign(ref obj, ref op, ref operand) => {
+                write!(f, "{} {}= {}", obj, op, operand)
             },
             Expr::AssignRef(ref obj, ref value) => {
                 write!(f, "{} = &({})", obj, value)
@@ -244,15 +239,45 @@ impl<'a> fmt::Display for Ty<'a> {
             Ty::Array => "array",
             Ty::Callable => "callable",
             Ty::Bool => "bool",
+            Ty::Double => "double",
             Ty::Float => "float",
             Ty::Int => "int",
             Ty::String => "string",
             Ty::Object(ref p) => {
-                try!(write!(f, "{}", p));
+                match *p {
+                    Some(ref path) => try!(write!(f, "{}", path)),
+                    None => try!(write!(f, "object")),
+                }
                 ""
             }
         };
         write!(f, "{}", str_)
+    }
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            Op::Add => "+",
+            Op::Sub => "-",
+            Op::Mul => "*",
+            Op::Div => "/",
+            Op::Pow => "**",
+            Op::Mod => "%",
+            Op::Or => "||",
+            Op::And => "&&",
+            Op::Identical => "===",
+            Op::NotIdentical => "!==",
+            Op::Eq => "==",
+            Op::Neq => "!=",
+            Op::Uneq => "<>",
+            Op::Lt => "<",
+            Op::Gt => ">",
+            Op::Le => "<=",
+            Op::Ge => ">=",
+            Op::Spaceship => "<=>",
+            Op::Instanceof => unreachable!(),
+        })
     }
 }
 

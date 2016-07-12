@@ -305,14 +305,30 @@ impl_rdp! {
         coalesce_expression            =  { binary_expression ~ ["??"] ~ expression }
 
         // Section: Assignment Operators
-        assignment_expression           = {
+        assignment_expression          =  {
             (unary_operator* ~ (coalesce_expression | byref_assignment_expression | simple_assignment_expression | compound_assignment_expression | ternary_expression)) |
             binary_expression
         }
-        simple_assignment_expression    = { unary_expression ~ ["="] ~ assignment_expression }
-        byref_assignment_expression     = { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
-        compound_assignment_expression  = { unary_expression ~ compound_assignment_operator ~ assignment_expression }
-        compound_assignment_operator    = { ["**="] | ["*="] | ["/="] | ["%="] | ["+="] | ["-="] | [".="] | ["<<="] | [">>="] | ["&="] | ["^="] | ["|="] }
+        simple_assignment_expression   =  { unary_expression ~ ["="] ~ assignment_expression }
+        byref_assignment_expression    =  { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
+        compound_assignment_expression =  { unary_expression ~ compound_assignment_operator ~ assignment_expression }
+        compound_assignment_operator   =  {
+            compound_op_pow | compound_op_mul | compound_op_div | compound_op_mod | compound_op_add | compound_op_sub |
+            compound_op_concat | compound_op_shl | compound_op_shr | compound_op_and | compound_op_xor | compound_op_or
+        }
+        compound_op_pow                =  { ["**="] }
+        compound_op_mul                =  { ["*="] }
+        compound_op_div                =  { ["/="] }
+        compound_op_mod                =  { ["%="] }
+        compound_op_add                =  { ["+="] }
+        compound_op_sub                =  { ["-="] }
+        compound_op_concat             =  { [".="] }
+        compound_op_shl                =  { ["<<="] }
+        compound_op_shr                =  { [">>="] }
+        // compound bitwise-and
+        compound_op_and                =  { ["&="] }
+        compound_op_xor                =  { ["^="] }
+        compound_op_or                 =  { ["|="] }
 
         // Section: Logical Operators (Form 2) - TODO: won't work, not ported yet, precedence wrong? (since after assignment?)
         /*logical_AND_expression_2        = {
@@ -602,6 +618,10 @@ impl_rdp! {
         _assignment_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
+            },
+            (_: compound_assignment_expression, _: unary_expression, ex: _unary_expression(), _: compound_assignment_operator,
+                op, _: assignment_expression, ae: _assignment_expression()) => {
+                Ok(Expr::CompoundAssign(Box::new(try!(ex)), rule_to_op(op.rule), Box::new(try!(ae))))
             },
             (_: byref_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
                 Ok(Expr::AssignRef(Box::new(try!(ex)), Box::new(try!(ae))))
@@ -1210,7 +1230,7 @@ impl_rdp! {
                 Some(rule_to_ty(ty.rule))
             },
             (_: type_declaration, _: qualified_name, qn: _qualified_name()) => {
-                Some(Ty::Object(qualified_name_to_path(qn)))
+                Some(Ty::Object(Some(qualified_name_to_path(qn))))
             },
             () => None,
         }
@@ -1344,21 +1364,29 @@ fn rule_to_ty<'a>(r: Rule) -> Ty<'a> {
     match r {
         Rule::type_array => Ty::Array,
         Rule::type_string => Ty::String,
-        Rule::type_int => Ty::Int,
+        Rule::type_int | Rule::type_integer => Ty::Int,
         Rule::type_float => Ty::Float,
-        Rule::type_bool => Ty::Bool,
+        Rule::type_bool | Rule::type_boolean => Ty::Bool,
+        Rule::type_double => Ty::Double,
         Rule::type_callable => Ty::Callable,
+        Rule::type_object => Ty::Object(None),
+        //TODO
+        Rule::type_binary => unimplemented!(),
+        Rule::type_real => unimplemented!(),
+        Rule::type_unset => unimplemented!(),
         _ => unreachable!(),
     }
 }
 
 fn rule_to_op(r: Rule) -> Op {
+    // all Rules starting with ```compound_op_``` can only occur in a compound assignment instruction, we simplify the internals
+    // by mapping them to the same rule e.g. compound_op_add -> Op::Add
     match r {
-        Rule::op_add => Op::Add,
-        Rule::op_sub => Op::Sub,
-        Rule::op_mul => Op::Mul,
-        Rule::op_div => Op::Div,
-        Rule::op_mod => Op::Mod,
+        Rule::op_add | Rule::compound_op_add => Op::Add,
+        Rule::op_sub | Rule::compound_op_sub => Op::Sub,
+        Rule::op_mul | Rule::compound_op_mul => Op::Mul,
+        Rule::op_div | Rule::compound_op_div => Op::Div,
+        Rule::op_mod | Rule::compound_op_mod => Op::Mod,
         Rule::op_equality_identical => Op::Identical,
         Rule::op_equality_not_identical => Op::NotIdentical,
         Rule::op_equality_eq => Op::Eq,

@@ -113,6 +113,8 @@ pub enum Expr<'a> {
     Function(FunctionDecl<'a>),
     // statements
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
+    /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
+    CompoundAssign(Box<Expr<'a>>, Op, Box<Expr<'a>>),
     AssignRef(Box<Expr<'a>>, Box<Expr<'a>>),
     List(Vec<(Expr<'a>, Expr<'a>)>),
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
@@ -145,8 +147,9 @@ pub enum Ty<'a> {
     Bool,
     Float,
     Int,
+    Double,
     String,
-    Object(Path<'a>),
+    Object(Option<Path<'a>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

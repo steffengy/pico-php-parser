@@ -26,6 +26,11 @@ fn parse_stmt_assignment() {
 }
 
 #[test]
+fn parse_stmt_compound_assignment() {
+    assert_eq!(process_stmt("$test+=4;"), Expr::CompoundAssign(Box::new(Expr::Variable("test".into())), Op::Add, Box::new(Expr::Int(4))));
+}
+
+#[test]
 fn parse_stmt_if_while() {
     let expr_var = Expr::Variable("a".into());
     let block_stmt = Expr::Call(Box::new(Expr::Path(Path::Identifier("b".into()))), vec![]);
@@ -116,7 +121,7 @@ fn parse_func_decl() {
 #[test]
 fn parse_func_decl_typehint() {
     assert_eq!(process_stmt("function test(Test $a) { ok(); }"), Expr::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Path::Identifier("Test".into()))), default: Expr::None }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Some(Path::Identifier("Test".into())))), default: Expr::None }],
         body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("ok".into()))), vec![])], usev: vec![], ret_ref: false, })
     ));
 }
