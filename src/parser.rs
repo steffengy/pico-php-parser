@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::LinkedList;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
-use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers,
+use ast::{Expr, CatchClause, ClassDecl, ClassMember, ClassModifier, Decl, FunctionDecl, Modifiers, UnaryOp,
     Op, ParsedItem, ParamDefinition, Path, Ty, TraitUse, UseClause, Visibility};
 
 #[derive(Debug)]
@@ -591,9 +591,9 @@ impl_rdp! {
             (_: assignment_expression, e: _assignment_expression()) => e,
         }
 
-        _unary_operators(&self) -> LinkedList<Op> {
+        _unary_operators(&self) -> LinkedList<UnaryOp> {
             (_: unary_operator, op, mut next: _unary_operators()) => {
-                next.push_front(rule_to_op(op.rule));
+                next.push_front(rule_to_unary_op(op.rule));
                 next
             },
             () => LinkedList::new(),
@@ -628,10 +628,10 @@ impl_rdp! {
                 Ok(Expr::Cast(rule_to_ty(ty.rule), Box::new(try!(e))))
             },
             (_: unary, _: increment_or_decrement_op, op, operand: _binary_expression()) => {
-                Ok(Expr::UnaryOp(rule_to_op(op.rule), Box::new(try!(operand))))
+                Ok(Expr::UnaryOp(rule_to_unary_op(op.rule), Box::new(try!(operand))))
             },
             (_: unary, _: unary_operator, op, operand: _binary_expression()) => {
-                Ok(Expr::UnaryOp(rule_to_op(op.rule), Box::new(try!(operand))))
+                Ok(Expr::UnaryOp(rule_to_unary_op(op.rule), Box::new(try!(operand))))
             },
             (_: additive_expression, left: _binary_expression(), op, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(rule_to_op(op.rule), Box::new(try!(left)), Box::new(try!(right))))
@@ -940,8 +940,9 @@ impl_rdp! {
                     ret_ref: ret_ref,
                 })))
             },
-            (_: class_declaration, &name: name, base_clause: _class_extends(), implements: _class_implements(), members: _class_members()) => {
+            (_: class_declaration, cmod: _optional_class_modifier(), &name: name, base_clause: _class_extends(), implements: _class_implements(), members: _class_members()) => {
                 Ok(Expr::Decl(Decl::Class(ClassDecl {
+                    cmod: cmod,
                     name: name.into(),
                     base_class: base_clause,
                     implements: implements,
@@ -1088,15 +1089,24 @@ impl_rdp! {
                 };
                 next
             },
-            (_: class_modifier, modifier, mut next: _modifiers()) => {
-                next.2 = match modifier.rule {
-                    Rule::class_modifier_final => ClassModifier::Final,
-                    Rule::class_modifier_abstract => ClassModifier::Abstract,
-                    _ => unreachable!()
-                };
+            (_: class_modifier, m: _class_modifier(), mut next: _modifiers()) => {
+                next.2 = m;
                 next
             },
             () => Modifiers(false, Visibility::None, ClassModifier::None)
+        }
+
+        _class_modifier(&self) -> ClassModifier {
+            (modifier) => match modifier.rule {
+                Rule::class_modifier_final => ClassModifier::Final,
+                Rule::class_modifier_abstract => ClassModifier::Abstract,
+                _ => unreachable!()
+            }
+        }
+
+        _optional_class_modifier(&self) -> ClassModifier {
+            (_: class_modifier, m: _class_modifier()) => m,
+            () => ClassModifier::None,
         }
 
         _namespace_aliasing_clause(&self) -> Option<Cow<'input, str>> {
@@ -1344,9 +1354,6 @@ fn rule_to_ty<'a>(r: Rule) -> Ty<'a> {
 
 fn rule_to_op(r: Rule) -> Op {
     match r {
-        Rule::op_not => Op::Not,
-        Rule::op_increment => Op::PreInc,
-        Rule::op_decrement => Op::PreDec,
         Rule::op_add => Op::Add,
         Rule::op_sub => Op::Sub,
         Rule::op_mul => Op::Mul,
@@ -1366,11 +1373,20 @@ fn rule_to_op(r: Rule) -> Op {
     }
 }
 
-fn rule_to_op_post(r: Rule) -> Op {
+fn rule_to_unary_op(r: Rule) -> UnaryOp {
     match r {
-        Rule::op_increment => Op::PostInc,
-        Rule::op_decrement => Op::PostDec,
-        r => rule_to_op(r),
+        Rule::op_not => UnaryOp::Not,
+        Rule::op_increment => UnaryOp::PreInc,
+        Rule::op_decrement => UnaryOp::PreDec,
+        _ => unreachable!(),
+    }
+}
+
+fn rule_to_op_post(r: Rule) -> UnaryOp {
+    match r {
+        Rule::op_increment => UnaryOp::PostInc,
+        Rule::op_decrement => UnaryOp::PostDec,
+        r => rule_to_unary_op(r),
     }
 }
 

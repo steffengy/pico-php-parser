@@ -22,6 +22,7 @@ pub enum Path<'a> {
     NsIdentifier(Cow<'a, str>, Cow<'a, str>),
 }
 
+/// binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     // arith
@@ -34,8 +35,6 @@ pub enum Op {
     // logical
     Or,
     And,
-    // unary
-    Not,
     // equality
     Identical,
     NotIdentical,
@@ -49,12 +48,16 @@ pub enum Op {
     Ge,
     /// spaceship operator, <=>
     Spaceship,
-    // pre/post
+    Instanceof,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnaryOp {
+    Not,
     PreInc,
     PreDec,
     PostInc,
     PostDec,
-    Instanceof,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,7 +107,7 @@ pub enum Expr<'a> {
     StaticMember(Box<Expr<'a>>, Vec<Expr<'a>>),
     Call(Box<Expr<'a>>, Vec<Expr<'a>>),
     New(Path<'a>, Vec<Expr<'a>>),
-    UnaryOp(Op, Box<Expr<'a>>),
+    UnaryOp(UnaryOp, Box<Expr<'a>>),
     BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
     Cast(Ty<'a>, Box<Expr<'a>>),
     Function(FunctionDecl<'a>),
@@ -174,6 +177,7 @@ pub struct FunctionDecl<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassDecl<'a> {
+    pub cmod: ClassModifier,
     pub name: Cow<'a, str>,
     pub base_class: Option<Path<'a>>,
     /// The implemented interfaces of this class

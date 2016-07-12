@@ -1,5 +1,5 @@
 use std::fmt::{self, Write};
-use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, Op, Visibility};
+use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, UseClause, UnaryOp, Op, Visibility};
 
 impl<'a> fmt::Display for Expr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -118,9 +118,19 @@ impl<'a> fmt::Display for Expr<'a> {
                 write!(f, ")")
             },
             Expr::UnaryOp(ref operator, ref expr) => {
+                let post_op = match *operator {
+                    UnaryOp::PostInc => "++",
+                    UnaryOp::PreInc => "--",
+                    _ => ""
+                };
+                if post_op.len() > 0 {
+                    return write!(f, "({}){}", expr, post_op);
+                }
                 let op_str = match *operator {
-                    Op::Not => "!",
-                    _ => panic!("op {:?} unsupported (unary)", operator)
+                    UnaryOp::Not => "!",
+                    UnaryOp::PreInc => "++",
+                    UnaryOp::PreDec => "--",
+                    UnaryOp::PostInc | UnaryOp::PostDec => unreachable!(),
                 };
                 write!(f, "{}({})", op_str, expr)
             },

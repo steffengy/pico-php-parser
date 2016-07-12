@@ -30,7 +30,7 @@ fn parse_expr_op() {
 fn parse_expr_logical() {
     assert_eq!(process_expr(r#"$a||$b"#), Expr::BinaryOp(Op::Or, Box::new(Expr::Variable("a".into())), Box::new(Expr::Variable("b".into()))));
     assert_eq!(process_expr(r#"$a&&true"#), Expr::BinaryOp(Op::And, Box::new(Expr::Variable("a".into())), Box::new(Expr::True)));
-    assert_eq!(process_expr(r#"!$a"#), Expr::UnaryOp(Op::Not, Box::new(Expr::Variable("a".into()))));
+    assert_eq!(process_expr(r#"!$a"#), Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Variable("a".into()))));
 }
 
 #[test]
@@ -128,10 +128,10 @@ fn parse_expr_comment() {
 
 #[test]
 fn parse_expr_post_pre_dec_inc() {
-    assert_eq!(process_expr("$c++"), Expr::UnaryOp(Op::PostInc, Box::new(Expr::Variable("c".into()))));
-    assert_eq!(process_expr("$c--"), Expr::UnaryOp(Op::PostDec, Box::new(Expr::Variable("c".into()))));
-    assert_eq!(process_expr("++$c"), Expr::UnaryOp(Op::PreInc, Box::new(Expr::Variable("c".into()))));
-    assert_eq!(process_expr("--$c"), Expr::UnaryOp(Op::PreDec, Box::new(Expr::Variable("c".into()))));
+    assert_eq!(process_expr("$c++"), Expr::UnaryOp(UnaryOp::PostInc, Box::new(Expr::Variable("c".into()))));
+    assert_eq!(process_expr("$c--"), Expr::UnaryOp(UnaryOp::PostDec, Box::new(Expr::Variable("c".into()))));
+    assert_eq!(process_expr("++$c"), Expr::UnaryOp(UnaryOp::PreInc, Box::new(Expr::Variable("c".into()))));
+    assert_eq!(process_expr("--$c"), Expr::UnaryOp(UnaryOp::PreDec, Box::new(Expr::Variable("c".into()))));
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn parse_expr_cast() {
 #[test]
 fn parse_expr_assign() {
     assert_eq!(process_expr("($b=4)"), Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(4))));
-    let negate_assign_result = Expr::UnaryOp(Op::Not, Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(1)))));
+    let negate_assign_result = Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(1)))));
     assert_eq!(process_expr("!($b=1)"), negate_assign_result);
     assert_eq!(process_expr("!$b=1"), negate_assign_result);
 }
