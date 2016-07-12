@@ -199,3 +199,13 @@ fn parse_expr_assign() {
 fn parse_expr_isset() {
     assert_eq!(process_expr("isset($b)"), Expr::Isset(vec![Expr::Variable("b".into())]));
 }
+
+#[test]
+fn parse_expr_empty() {
+    assert_eq!(process_expr("empty($b)"), Expr::Empty(Box::new(Expr::Variable("b".into()))));
+}
+
+#[test]
+fn parse_expr_error_control() {
+    assert_eq!(process_expr("@test()"), Expr::ErrorControl(Box::new(Expr::Call(Box::new(Expr::Path(Path::Identifier("test".into()))), vec![]))));
+}

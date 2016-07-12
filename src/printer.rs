@@ -51,6 +51,7 @@ impl<'a> fmt::Display for Expr<'a> {
                 try!(write_args(f, args));
                 write!(f, ")")
             },
+            Expr::Empty(ref arg) => write!(f, "empty({})", arg),
             Expr::Unset(ref args) => {
                 try!(write!(f, "unset("));
                 try!(write_args(f, args));
@@ -66,9 +67,7 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 Ok(())
             },
-            Expr::Throw(ref arg) => {
-                write!(f, "throw {}", arg)
-            },
+            Expr::Throw(ref arg) => write!(f, "throw {}", arg),
             Expr::Break(ref amount) => {
                 match *amount {
                     1 => write!(f, "break;"),
@@ -117,10 +116,11 @@ impl<'a> fmt::Display for Expr<'a> {
                 try!(write_args(f, args));
                 write!(f, ")")
             },
+            Expr::ErrorControl(ref expr) => write!(f, "@({})", expr),
             Expr::UnaryOp(ref operator, ref expr) => {
                 let post_op = match *operator {
                     UnaryOp::PostInc => "++",
-                    UnaryOp::PreInc => "--",
+                    UnaryOp::PostDec => "--",
                     _ => ""
                 };
                 if post_op.len() > 0 {
@@ -141,21 +141,11 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, "({}) {} ({})", op1, operator, op2)
             },
-            Expr::Cast(ref ty, ref e) => {
-                write!(f, "({}){}", ty, e)
-            },
-            Expr::Function(ref decl) => {
-                write!(f, "function {}", decl)
-            },
-            Expr::Assign(ref obj, ref value) => {
-                write!(f, "{} = {}", obj, value)
-            },
-            Expr::CompoundAssign(ref obj, ref op, ref operand) => {
-                write!(f, "{} {}= {}", obj, op, operand)
-            },
-            Expr::AssignRef(ref obj, ref value) => {
-                write!(f, "{} = &({})", obj, value)
-            },
+            Expr::Cast(ref ty, ref e) => write!(f, "({}){}", ty, e),
+            Expr::Function(ref decl) => write!(f, "function {}", decl),
+            Expr::Assign(ref obj, ref value) => write!(f, "{} = {}", obj, value),
+            Expr::CompoundAssign(ref obj, ref op, ref operand) => write!(f, "{} {}= {}", obj, op, operand),
+            Expr::AssignRef(ref obj, ref value) => write!(f, "{} = &({})", obj, value),
             Expr::If(ref condition, ref case_true, ref case_else) => {
                 try!(write!(f, "if ({}) {}", condition, case_true));
                 match **case_else {
@@ -174,12 +164,8 @@ impl<'a> fmt::Display for Expr<'a> {
                 }
                 write!(f, ":{}", case_else)
             },
-            Expr::While(ref condition, ref body) => {
-                write!(f, "while ({}) {}", condition, body)
-            },
-            Expr::DoWhile(ref body, ref condition) => {
-                write!(f, "do {} while({});", body, condition)
-            },
+            Expr::While(ref condition, ref body) => write!(f, "while ({}) {}", condition, body),
+            Expr::DoWhile(ref body, ref condition) => write!(f, "do {} while({});", body, condition),
             Expr::ForEach(ref obj, ref k, ref v, ref body) => {
                 try!(write!(f, "foreach ({} as ", obj));
                 match **k {
@@ -260,6 +246,7 @@ impl fmt::Display for Op {
         write!(f, "{}", match *self {
             Op::Add => "+",
             Op::Sub => "-",
+            Op::Concat => ".",
             Op::Mul => "*",
             Op::Div => "/",
             Op::Pow => "**",

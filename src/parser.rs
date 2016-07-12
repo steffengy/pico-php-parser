@@ -263,7 +263,7 @@ impl_rdp! {
             equality_expression         =  { op_equality_identical | op_equality_not_identical | op_equality_eq | op_equality_neq | op_equality_uneq }
             relational_expression       =  { op_lt | op_gt | op_le | op_ge | op_spaceship }
             shift_expression            =  { op_shr | op_shl }
-            additive_expression         =  { op_add | op_sub }
+            additive_expression         =  { op_add | op_sub | op_concat }
             multiplicative_expression   =  { op_mul | op_div | op_mod }
         }
         op_not                          =  { ["!"] }
@@ -286,6 +286,7 @@ impl_rdp! {
         op_shl                          =  { ["<<"] }
         op_add                          =  { ["+"] }
         op_sub                          =  { ["-"] }
+        op_concat                       =  { ["."] }
         op_mul                          =  { ["*"] }
         op_div                          =  { ["/"] }
         op_mod                          =  { ["%"] }
@@ -695,7 +696,8 @@ impl_rdp! {
                     Expr::BinaryOp(Op::Instanceof, _, ty) => Ok(Expr::BinaryOp(Op::Instanceof, Box::new(try!(e)), ty)),
                     _ => unreachable!(),
                 }
-            }
+            },
+            (_: error_control_expression, _: expression, e: _expression()) => Ok(Expr::ErrorControl(Box::new(try!(e))))
         }
 
         _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
@@ -868,6 +870,9 @@ impl_rdp! {
             (_: unset_intrinsic, args: _multiple_expressions()) => {
                 Ok(Expr::Unset(try!(args).into_iter().collect()))
             },
+            (_: empty_intrinsic, _: expression, arg: _expression()) => {
+                Ok(Expr::Empty(Box::new(try!(arg))))
+            }
         }
 
         _list_or_variable(&self) -> Result<Expr<'input>, ParseError> {
@@ -1382,6 +1387,7 @@ fn rule_to_op(r: Rule) -> Op {
     // all Rules starting with ```compound_op_``` can only occur in a compound assignment instruction, we simplify the internals
     // by mapping them to the same rule e.g. compound_op_add -> Op::Add
     match r {
+        Rule::op_concat | Rule::compound_op_concat => Op::Concat,
         Rule::op_add | Rule::compound_op_add => Op::Add,
         Rule::op_sub | Rule::compound_op_sub => Op::Sub,
         Rule::op_mul | Rule::compound_op_mul => Op::Mul,
