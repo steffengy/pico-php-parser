@@ -167,9 +167,9 @@ fn parse_expr_array() {
     assert_eq!(process_expr("[1, 2]"), Expr::Array(vec![box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Int(2))]));
     assert_eq!(process_expr("[1, [2, 3], 3]"), Expr::Array(vec![
         box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Array(vec![
-            box_array_elem(Expr::None, Expr::Int(2)), box_array_elem(Expr::None, Expr::Int(3)), box_array_elem(Expr::None, Expr::Int(3))
+            box_array_elem(Expr::None, Expr::Int(2)), box_array_elem(Expr::None, Expr::Int(3))
         ])
-    )]));
+    ), box_array_elem(Expr::None, Expr::Int(3))]));
 }
 
 fn box_array_elem<'a>(a: Expr<'a>, b: Expr<'a>) -> (Box<Expr<'a>>, Box<Expr<'a>>) {

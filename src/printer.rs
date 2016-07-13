@@ -348,7 +348,11 @@ impl<'a> fmt::Display for Decl<'a> {
                 try!(write!(f, "static "));
                 for (i, var) in vars.iter().enumerate() {
                     try!(write_comma_separator(f, i));
-                    try!(write!(f, "{} = {}", var.0, var.1));
+                    if let Expr::None = var.1 {
+                        try!(write!(f, "{}", var.0));
+                    } else {
+                        try!(write!(f, "{} = {}", var.0, var.1));
+                    }
                 }
                 write!(f, ";")
             }

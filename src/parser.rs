@@ -92,11 +92,11 @@ impl_rdp! {
         exponent_part                   = @{ (["e"] | ["E"]) ~ sign? ~ digit+ }
         //        : String Literals (incomplete)
         string_literal                  = @{ single_quoted_string_literal | double_quoted_string_literal | heredoc_string_literal | nowdoc_string_literal }
-        single_quoted_string_literal    = @{ ["b"]? ~ ["'"] ~ sq_char* ~ ["'"] }
-        sq_char                         = @{ sq_escape_sequence | (!(["'"] | ["\\"]) ~ any) }
+        single_quoted_string_literal    = @{ ["b"]? ~ ["'"] ~ sq_chars* ~ ["'"] }
+        sq_chars                         = @{ sq_escape_sequence | (!(["'"] | ["\\"]) ~ any)+ }
         sq_escape_sequence              = @{ ["\\'"] | ["\\\\"] | ["\\"] }
-        double_quoted_string_literal    = @{ ["b"]? ~ ["\""] ~ dq_char* ~ ["\""] }
-        dq_char                         = @{ dq_escape_sequence | (!(["\""] | ["\\"]) ~ any) } // todo, incomplete, as below
+        double_quoted_string_literal    = @{ ["b"]? ~ ["\""] ~ dq_chars* ~ ["\""] }
+        dq_chars                         = @{ dq_escape_sequence | (!(["\""] | ["\\"]) ~ any)+ } // todo, incomplete, as below
         dq_escape_sequence              = @{ dq_simple_escape_sequence | dq_octal_escape_sequence | dq_hexadecimal_escape_sequence | dq_unicode_escape_sequence }
         dq_simple_escape_sequence       = @{ ["\\\""] | ["\\\\"] | ["\\$"] | ["\\e"] | ["\\f"] | ["\\n"] | ["\\r"] | ["\\t"] | ["\\v"] }
         dq_octal_escape_sequence        = @{ ["\\"] ~ octal_sequence }
@@ -236,7 +236,7 @@ impl_rdp! {
         }
         unary_operator                  =  { op_add | op_sub | op_not | op_bitwise_not }
         error_control_expression        =  { ["@"] ~ expression }
-        shell_command_expression        =  { ["`"] ~ dq_char* ~ ["`"] }
+        shell_command_expression        =  { ["`"] ~ dq_chars* ~ ["`"] }
         cast_expression                 =  { ["("] ~ cast_type ~ [")"] ~ expression }
         cast_type                       =  {
             type_array | type_binary | type_bool | type_boolean | type_double | type_int | type_integer | type_float | type_object | type_real |
@@ -1323,17 +1323,17 @@ impl_rdp! {
         // double quoted string, handle the escaping & concatenation of all fragments (TODO: string_variable probably belongs into this)
         _dq_string(&self) -> Result<String, ParseError> {
             // handle a hex-escape sequence
-            (_: dq_char, _: dq_escape_sequence, _: dq_hexadecimal_escape_sequence, &seq: hexadecimal_sequence, others: _hex_escapes(), next: _dq_string()) => {
+            (_: dq_chars, _: dq_escape_sequence, _: dq_hexadecimal_escape_sequence, &seq: hexadecimal_sequence, others: _hex_escapes(), next: _dq_string()) => {
                 let mut others = try!(others);
                 others.push_front(try!(u8::from_str_radix(seq, 16)));
                 Ok(try!(String::from_utf8(others.into_iter().collect())) + &try!(next))
             },
             // handle a octal-escape sequence
-            (_: dq_char, _: dq_escape_sequence, _: dq_octal_escape_sequence, &seq: octal_sequence, next: _dq_string()) => {
+            (_: dq_chars, _: dq_escape_sequence, _: dq_octal_escape_sequence, &seq: octal_sequence, next: _dq_string()) => {
                 Ok(try!(String::from_utf8(vec![try!(u8::from_str_radix(seq, 8))])) + &try!(next))
             },
             // handle an escape-sequence
-            (_: dq_char, _: dq_escape_sequence, &es: dq_simple_escape_sequence, next: _dq_string()) => {
+            (_: dq_chars, _: dq_escape_sequence, &es: dq_simple_escape_sequence, next: _dq_string()) => {
                 Ok(match es {
                     "\\n" => "\n",
                     "\\r" => "\r",
@@ -1345,7 +1345,7 @@ impl_rdp! {
                 }.to_owned() + &try!(next))
             },
             // handle a character
-            (&ch: dq_char, next: _dq_string()) => {
+            (&ch: dq_chars, next: _dq_string()) => {
                 Ok(ch.to_owned() + &try!(next))
             },
             () => Ok(String::new())
@@ -1353,14 +1353,14 @@ impl_rdp! {
 
         // a singled-quoted string, ignoring most of escaping, raw-literal like
         _sq_string(&self) -> Result<String, ParseError> {
-            (_: sq_char, &es: sq_escape_sequence, next: _sq_string()) => {
+            (_: sq_chars, &es: sq_escape_sequence, next: _sq_string()) => {
                 Ok(match es {
                     "\\\'" => "'",
                     "\\\\" => "\\",
                     es => es,
                 }.to_owned() + &try!(next))
             },
-            (&ch: sq_char, next: _sq_string()) => {
+            (&ch: sq_chars, next: _sq_string()) => {
                 Ok(ch.to_owned() + &try!(next))
             },
             () => Ok(String::new())
@@ -1368,7 +1368,7 @@ impl_rdp! {
 
         // handle the collection of bytes to later convert UTF8-bytes from hex-escapes into a string
         _hex_escapes(&self) -> Result<LinkedList<u8>, ParseError> {
-            (_: dq_char, _: dq_escape_sequence, _: dq_hexadecimal_escape_sequence, &current: hexadecimal_sequence, next: _hex_escapes()) => {
+            (_: dq_chars, _: dq_escape_sequence, _: dq_hexadecimal_escape_sequence, &current: hexadecimal_sequence, next: _hex_escapes()) => {
                 let mut next = try!(next);
                 next.push_front(try!(u8::from_str_radix(current, 16)));
                 Ok(next)
