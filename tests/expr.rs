@@ -218,3 +218,10 @@ fn parse_expr_error_control() {
 fn parse_expr_clone() {
     assert_eq!(process_expr("clone $test"), Expr::Clone(Box::new(Expr::Variable("test".into()))));
 }
+
+#[test]
+fn parse_expr_priority_parents_call() {
+    assert_eq!(process_expr("(new $obj)->method()"), Expr::Call(Box::new(Expr::ObjMember(Box::new(Expr::New(Box::new(Expr::Variable("obj".into())), vec![])),
+        vec![Expr::Path(Path::Identifier("method".into()))]
+    )), vec![]));
+}

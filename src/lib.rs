@@ -1,4 +1,4 @@
-#![recursion_limit = "400"]
+#![recursion_limit = "420"]
 
 #[macro_use]
 extern crate pest;

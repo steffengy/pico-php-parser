@@ -133,10 +133,11 @@ impl_rdp! {
         // Section: Expressions
         // In the reference this contains "constant_expression", we use "array_creation_expression" to prevent infinite recursion
         primary_expression              =  {
-            (["("] ~ assignment_expression ~ [")"]) | intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
+            (["("] ~ assignment_expression ~ assignment_parents_end) | intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
             array_creation_expression |
             ["$this"]
         }
+        assignment_parents_end          =  { [")"] }
         // added to parse constants explicitly, not in reference
         constant                        =  { constant_true | constant_false | constant_null }
         constant_true                   =  { ["true"] }
@@ -865,7 +866,7 @@ impl_rdp! {
         }
 
         _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: assignment_expression, e: _assignment_expression()) => e,
+            (_: assignment_expression, e: _assignment_expression(), _: assignment_parents_end) => e,
             (_: intrinsic, i: _intrinsic()) => i,
             (_: anonym_func_creation_expression, ret_ref: _function_definition_return_ref(), params: _function_definition_params(), _: function_definition_param_end,
                 use_clause: _anonym_func_use_clause(), _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
