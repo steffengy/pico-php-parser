@@ -1,6 +1,7 @@
 use std::fmt::{self, Write};
 use std::iter;
-use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path, ParsedItem, Ty, IncludeTy, UseClause, UnaryOp, Op, Visibility};
+use ast::{ClassDecl, ClassMember, ClassModifier, Decl, Expr, FunctionDecl, Modifiers, ParamDefinition, Path,
+    ParsedItem, Ty, IncludeTy, TraitUse, UseClause, UnaryOp, Op, Visibility};
 
 pub struct PrettyPrinter<W: Write> {
     indent_level: usize,
@@ -660,18 +661,30 @@ impl<'a, W: Write> PrettyPrint<W> for ClassMember<'a> {
                 }
                 Ok(())
             },
-            ClassMember::TraitUse(ref path, ref unsupported) => {
+            ClassMember::TraitUse(ref path, ref clauses) => {
                 // This assert would be a fatal error in PHP: "Fatal error: Cannot use traits inside of interfaces"
                 // sanity check if what we parsed and try to print makes sense
                 assert!(!printer.inside_iface);
-                assert_eq!(unsupported.len(), 0);
-                assert_eq!(path.len(), 1);
-                write!(printer, "use {};", path[0])
+
+                try!(write!(printer, "use "));
+                for (i, t) in path.iter().enumerate() {
+                    try!(write_comma_separator(printer, i));
+                    try!(write!(printer, "{}", t));
+                }
+                if clauses.len() == 0 {
+                    return write!(printer, ";");
+                }
+                try!(write!(printer, "{{"));
+                for clause in clauses {
+                    try!(write!(printer, "{}", clause));
+                }
+                write!(printer, "}}")
             },
         }
     }
 }
 
+// TODO: maybe reeuse more where a macro takes a format string or similar?
 #[inline]
 fn write_comma_separator<W: Write>(writer: &mut W, i: usize) -> fmt::Result {
     if i > 0 {
@@ -750,18 +763,24 @@ impl<'a> fmt::Display for Path<'a> {
     }
 }
 
+impl Visibility {
+    fn to_static_string(&self) -> &'static str {
+        match *self {
+            Visibility::None => "",
+            Visibility::Public => "public",
+            Visibility::Protected => "protected",
+            Visibility::Private => "private",
+        }
+    }
+}
+
 impl fmt::Display for Modifiers {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut modifiers = vec![];
         if self.0 {
             modifiers.push("static");
         }
-        let vis = match self.1 {
-            Visibility::None => "",
-            Visibility::Public => "public",
-            Visibility::Protected => "protected",
-            Visibility::Private => "private",
-        };
+        let vis = self.1.to_static_string();
         if !vis.is_empty() {
             modifiers.push(vis);
         }
@@ -786,6 +805,28 @@ impl<'a> fmt::Display for UseClause<'a> {
                     Some(ref x) => write!(f, "{} as {}", parts, x),
                 }
             }
+        }
+    }
+}
+
+impl<'a> fmt::Display for TraitUse<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            TraitUse::InsteadOf(ref atm, ref paths) => {
+                try!(write!(f, "{}::{} insteadof ", atm.0, atm.1));
+                for (i, path) in paths.iter().enumerate() {
+                    try!(write_comma_separator(f, i));
+                    try!(write!(f, "{}", path));
+                }
+                write!(f, ";")
+            },
+            TraitUse::As(ref atm, ref visibility, ref path) => {
+                try!(write!(f, "{}::{} as {}", atm.0, atm.1, visibility.to_static_string()));
+                match *path {
+                    None => write!(f, ";"),
+                    Some(ref path) => write!(f, " {};", path)
+                }
+            },
         }
     }
 }

@@ -531,11 +531,14 @@ impl_rdp! {
         trait_member_declaration        =  { property_declaration | method_declaration | constructor_declaration | destructor_declaration | trait_use_clause }
         trait_use_clause                =  { ["use"] ~ trait_name_list ~ trait_use_specification }
         trait_name_list                 =  { qualified_name ~ ([","] ~ qualified_name)* }
-        trait_use_specification         =  { [";"] | (["{"] ~ trait_select_and_alias_clause* ~ ["}"]) }
-        trait_select_and_alias_clause   =  { (trait_select_insteadof_clause | trait_alias_as_clause) ~ [";"] }
-        trait_select_insteadof_clause   =  { name ~ ["insteadof"] ~ name }
+        trait_use_specification         =  { (["{"] ~ trait_select_and_alias_clause* ~ ["}"]) | [";"] }
+        trait_select_and_alias_clause   =  { (trait_alias_as_clause | trait_select_insteadof_clause) ~ [";"] }
+        // The official documentation is so wrong here, zend_language_parser.y not
+        absolute_trait_method_reference =  { qualified_name ~ ["::"] ~ name }
+        trait_select_insteadof_clause   =  { absolute_trait_method_reference ~ ["insteadof"] ~ trait_select_insteadof_name+ }
+        trait_select_insteadof_name     =  { qualified_name }
         trait_alias_as_clause           =  {
-            name ~ ["as"] ~ (
+            absolute_trait_method_reference ~ ["as"] ~ (
                 (visibility_modifier? ~ name) |
                 (visibility_modifier ~ name?)
             )
@@ -1129,19 +1132,40 @@ impl_rdp! {
             }
         }
 
-        _trait_alias_as_clause(&self) -> TraitUse<'input> {
-            // Dummy placeholder to make this panic, so we can implement it when required later
-            // this can never happen, and this function will always panic like that
-            (_: trait_alias_as_clause) => TraitUse::InsteadOf("".into(), "".into())
+        // the first tuple element is the qualifed name of the trait, the second the name of the method
+        _absolute_trait_method_reference(&self) -> (Path<'input>, Path<'input>) {
+            (_: qualified_name, qn: _qualified_name(), &name: name) => {
+                (qualified_name_to_path(qn), Path::Identifier(name.into()))
+            }
+        }
+
+        _optional_visibility_modifier(&self) -> Visibility {
+            (_: visibility_modifier, visibility: _visibility_modifier()) => visibility,
+            () => Visibility::None,
+        }
+
+        _optional_name(&self) -> Option<Cow<'input, str>> {
+            (&name: name) => Some(name.into()),
+            () => None,
+        }
+
+        _trait_select_insteadof_names(&self) -> LinkedList<Path<'input>> {
+            (_: trait_select_insteadof_name, _: qualified_name, qn: _qualified_name(), mut next: _trait_select_insteadof_names()) => {
+                next.push_front(qualified_name_to_path(qn));
+                next
+            },
+            () => LinkedList::new(),
         }
 
         _trait_select_and_alias_clauses(&self) -> LinkedList<TraitUse<'input>> {
-            (_: trait_select_and_alias_clause, _: trait_select_insteadof_clause, &n1: name, &n2: name, mut next: _trait_select_and_alias_clauses()) => {
-                next.push_front(TraitUse::InsteadOf(n1.into(), n2.into()));
+            (_: trait_select_and_alias_clause, _: trait_select_insteadof_clause, _: absolute_trait_method_reference, mr: _absolute_trait_method_reference(),
+                names: _trait_select_insteadof_names(), mut next: _trait_select_and_alias_clauses()) => {
+                next.push_front(TraitUse::InsteadOf(mr, names.into_iter().collect()));
                 next
             },
-            (_: trait_select_and_alias_clause, _: trait_alias_as_clause, cl: _trait_alias_as_clause(), mut next: _trait_select_and_alias_clauses()) => {
-                next.push_front(cl);
+            (_: trait_select_and_alias_clause, _: trait_alias_as_clause, _: absolute_trait_method_reference, mr: _absolute_trait_method_reference(),
+                visibility: _optional_visibility_modifier(), name: _optional_name(), mut next: _trait_select_and_alias_clauses()) => {
+                next.push_front(TraitUse::As(mr, visibility, name));
                 next
             },
             () => LinkedList::new(),
@@ -1165,20 +1189,24 @@ impl_rdp! {
                 next.0 = true;
                 next
             },
-            (_: visibility_modifier, visibility, mut next: _modifiers()) => {
-                next.1 = match visibility.rule {
-                    Rule::visibility_private => Visibility::Private,
-                    Rule::visibility_public => Visibility::Public,
-                    Rule::visibility_protected => Visibility::Protected,
-                    _ => unreachable!()
-                };
+            (_: visibility_modifier, visibility: _visibility_modifier(), mut next: _modifiers()) => {
+                next.1 = visibility;
                 next
             },
-            (_: class_modifier, m: _class_modifier(), mut next: _modifiers()) => {
-                next.2 = m;
+            (_: class_modifier, class_mod: _class_modifier(), mut next: _modifiers()) => {
+                next.2 = class_mod;
                 next
             },
             () => Modifiers(false, Visibility::None, ClassModifier::None)
+        }
+
+        _visibility_modifier(&self) -> Visibility {
+            (visibility) => match visibility.rule {
+                Rule::visibility_private => Visibility::Private,
+                Rule::visibility_public => Visibility::Public,
+                Rule::visibility_protected => Visibility::Protected,
+                _ => unreachable!()
+            }
         }
 
         _class_modifier(&self) -> ClassModifier {

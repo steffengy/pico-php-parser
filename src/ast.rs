@@ -178,8 +178,8 @@ pub enum IncludeTy {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TraitUse<'a> {
-    InsteadOf(Cow<'a, str>, Cow<'a, str>),
-    As(Cow<'a, str>, Cow<'a, str>),
+    InsteadOf((Path<'a>, Path<'a>), Vec<Path<'a>>),
+    As((Path<'a>, Path<'a>), Visibility, Option<Cow<'a, str>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

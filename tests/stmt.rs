@@ -184,6 +184,31 @@ fn parse_class_methods() {
 #[test]
 fn parse_trait_decl() {
     assert_eq!(process_stmt("trait Test {}"), Expr::Decl(Decl::Trait("Test".into(), vec![])));
+    // http://php.net/manual/de/language.oop5.traits.php
+    assert_eq!(process_stmt("trait HelloWorld {use Hello, World;}"), Expr::Decl(Decl::Trait("HelloWorld".into(), vec![
+        ClassMember::TraitUse(vec![Path::Identifier("Hello".into()), Path::Identifier("World".into())], vec![])
+    ])));
+}
+
+#[test]
+fn parse_class_use_trait_complex() {
+    // http://php.net/manual/de/language.oop5.traits.php
+    let code = "class Aliased_Talker {
+        use A, B {
+            B::smallTalk insteadof A;
+            A::bigTalk insteadof B;
+            B::bigTalk as talk;
+        }
+    }";
+    assert_eq!(process_stmt(code), Expr::Decl(Decl::Class(ClassDecl {
+        cmod: ClassModifier::None, name: "Aliased_Talker".into(), base_class: None, implements: vec![], members: vec![
+            ClassMember::TraitUse(vec![Path::Identifier("A".into()), Path::Identifier("B".into())], vec![
+                TraitUse::InsteadOf( (Path::Identifier("B".into()), Path::Identifier("smallTalk".into())), vec![Path::Identifier("A".into())] ),
+                TraitUse::InsteadOf( (Path::Identifier("A".into()), Path::Identifier("bigTalk".into())), vec![Path::Identifier("B".into())] ),
+                TraitUse::As( (Path::Identifier("B".into()), Path::Identifier("bigTalk".into())), Visibility::None, Some("talk".into()) ),
+            ])
+        ]
+    })));
 }
 
 #[test]
