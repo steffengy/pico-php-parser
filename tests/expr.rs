@@ -163,17 +163,14 @@ fn parse_expr_new() {
 #[test]
 fn parse_expr_array() {
     assert_eq!(process_expr("[]"), Expr::Array(vec![]));
+    assert_eq!(process_expr("[1,]"), Expr::Array(vec![(Expr::None, Expr::Int(1)) ]));
     assert_eq!(process_expr("array()"), Expr::Array(vec![]));
-    assert_eq!(process_expr("[1, 2]"), Expr::Array(vec![box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Int(2))]));
+    assert_eq!(process_expr("[1, 2]"), Expr::Array(vec![(Expr::None, Expr::Int(1)), (Expr::None, Expr::Int(2))]));
     assert_eq!(process_expr("[1, [2, 3], 3]"), Expr::Array(vec![
-        box_array_elem(Expr::None, Expr::Int(1)), box_array_elem(Expr::None, Expr::Array(vec![
-            box_array_elem(Expr::None, Expr::Int(2)), box_array_elem(Expr::None, Expr::Int(3))
+        (Expr::None, Expr::Int(1)), (Expr::None, Expr::Array(vec![
+            (Expr::None, Expr::Int(2)), (Expr::None, Expr::Int(3))
         ])
-    ), box_array_elem(Expr::None, Expr::Int(3))]));
-}
-
-fn box_array_elem<'a>(a: Expr<'a>, b: Expr<'a>) -> (Box<Expr<'a>>, Box<Expr<'a>>) {
-    (Box::new(a), Box::new(b))
+    ), (Expr::None, Expr::Int(3))]));
 }
 
 #[test]

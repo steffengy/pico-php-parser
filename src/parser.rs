@@ -617,7 +617,7 @@ impl_rdp! {
 
         _constant_expression(&self) -> Result<Expr<'input>, ParseError> {
             (_: array_creation_expression, values: _array_element_initializers(), _: array_creation_end) => {
-                Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
+                Ok(Expr::Array(try!(values).into_iter().map(|x| (x.0, x.1)).collect()))
             },
             (_: expression, e: _expression()) => e,
         }
@@ -740,7 +740,7 @@ impl_rdp! {
             },
             (_: object_creation_expression, e: _class_type_designator()) => Ok(Expr::New(Box::new(try!(e)), vec![])),
             (_: array_creation_expression, values: _array_element_initializers(), _: array_creation_end) => {
-                Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
+                Ok(Expr::Array(try!(values).into_iter().map(|x| (x.0, x.1)).collect()))
             }
         }
 

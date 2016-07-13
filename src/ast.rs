@@ -98,7 +98,7 @@ pub enum Expr<'a> {
     Path(Path<'a>),
     String(String),
     Int(i64),
-    Array(Vec<(Box<Expr<'a>>, Box<Expr<'a>>)>),
+    Array(Vec<(Expr<'a>, Expr<'a>)>),
     Variable(Cow<'a, str>),
     Reference(Box<Expr<'a>>),
     Block(Vec<Expr<'a>>),

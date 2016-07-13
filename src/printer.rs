@@ -155,7 +155,7 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                 try!(write!(printer, "["));
                 for (i, item) in items.iter().enumerate() {
                     try!(write_comma_separator(printer, i));
-                    match *item.0 {
+                    match item.0 {
                         Expr::None => (),
                         ref x => {
                             try!(x.pretty_print(printer));
