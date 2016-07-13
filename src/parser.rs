@@ -145,15 +145,16 @@ impl_rdp! {
         constant_null                   =  { ["null"] }
         intrinsic                       =  { intrinsic_construct | intrinsic_operator }
         intrinsic_construct             = _{ echo_intrinsic | list_intrinsic | unset_intrinsic }
-        intrinsic_operator              = _{ array_intrinsic | empty_intrinsic | eval_intrinsic | exit_intrinsic | isset_intrinsic | print_intrinsic }
-        array_intrinsic                 =  { ["array"] ~ ["("] ~ array_initializer? ~ [")"] }
+        intrinsic_operator              = _{ empty_intrinsic | eval_intrinsic | exit_intrinsic | isset_intrinsic | print_intrinsic }
         echo_intrinsic                  =  { ["echo"] ~ expression_list_one_or_more }
         empty_intrinsic                 =  { ["empty"] ~ ["("] ~ expression ~ [")"] }
         eval_intrinsic                  =  { ["eval"] ~ ["("] ~ expression ~ [")"] }
         exit_or_die                     = _{ ["exit"] | ["die"] }
         exit_intrinsic                  =  { (exit_or_die ~ ["("] ~ expression? ~ [")"]) | (exit_or_die ~ expression?) }
         isset_intrinsic                 =  { ["isset"] ~ ["("] ~ expression_list_one_or_more ~ [")"] }
-        expression_list_one_or_more     = _{ expression ~ ([","] ~ expression)* }
+        expression_list_one_or_more     = _{ intrinsic_expression ~ ([","] ~ intrinsic_expression)* }
+        // this safeguards from consuming too much, else we'd need an end_token, which is a bit tricky with the echo intrinsic
+        intrinsic_expression            =  { expression }
         list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ [")"] }
         list_expression_list            =  {
             (list_or_variable | keyed_list_expression | list_item_empty) ~ (
@@ -889,15 +890,24 @@ impl_rdp! {
             (_: constant, c: _constant()) => Ok(c),
         }
 
+        _multiple_intrinsic_expressions(&self) -> Result<LinkedList<Expr<'input>>, ParseError> {
+            (_: intrinsic_expression, _: expression, ex: _expression(), next: _multiple_intrinsic_expressions()) => {
+                let mut next = try!(next);
+                next.push_front(try!(ex));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new())
+        }
+
         _intrinsic(&self) -> Result<Expr<'input>, ParseError> {
             (_: list_intrinsic, e: _list_intrinsic()) => e,
-            (_: echo_intrinsic, args: _multiple_expressions()) => {
+            (_: echo_intrinsic, args: _multiple_intrinsic_expressions()) => {
                 Ok(Expr::Echo(try!(args).into_iter().collect()))
             },
-            (_: isset_intrinsic, args: _multiple_expressions()) => {
+            (_: isset_intrinsic, args: _multiple_intrinsic_expressions()) => {
                 Ok(Expr::Isset(try!(args).into_iter().collect()))
             },
-            (_: unset_intrinsic, args: _multiple_expressions()) => {
+            (_: unset_intrinsic, args: _multiple_intrinsic_expressions()) => {
                 Ok(Expr::Unset(try!(args).into_iter().collect()))
             },
             (_: empty_intrinsic, _: expression, arg: _expression()) => {
