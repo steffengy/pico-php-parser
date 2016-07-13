@@ -403,10 +403,11 @@ impl_rdp! {
         else_clause_2                   =  { ["else"] ~ [":"] ~ statement_list }
         switch_statement                =  {
             ( ["switch"] ~ ["("] ~ expression ~ [")"] ) ~ (
-                ( ["{"] ~ (case_statement+ ~ statement_list?)* ~ ["}"] ) |
-                ( [":"] ~ (case_statement+ ~ statement_list?)* ~ ["endswitch"] ~ [";"] )
+                ( ["{"] ~ (case_statement+ ~ statement_list?)* ~ &["}"] ~ switch_statement_end) |
+                ( [":"] ~ (case_statement+ ~ statement_list?)* ~ &["endswitch"] ~ switch_statement_end ~ [";"] )
             )
         }
+        switch_statement_end            =  { ["endswitch"] | ["}"] }
 
         // Section: Iteration Statements
         iteration_statement             =  { while_statement | do_statement | for_statement | foreach_statement }
@@ -1247,7 +1248,7 @@ impl_rdp! {
         }
 
         _selection_statement(&self) -> Result<Expr<'input>, ParseError> {
-            (_: switch_statement, _: expression, e: _expression(), cstmts: _case_statements()) => {
+            (_: switch_statement, _: expression, e: _expression(), cstmts: _case_statements(), _: switch_statement_end) => {
                 Ok(Expr::Switch(Box::new(try!(e)), try!(cstmts).into_iter().collect()))
             },
             (_: if_statement, ifstmt: _if_statement()) => ifstmt,

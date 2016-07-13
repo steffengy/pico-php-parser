@@ -274,6 +274,10 @@ fn parse_switch_statement() {
         vec![(vec![Expr::Int(1), Expr::Int(2)], Expr::Echo(vec![Expr::Int(1)])) ]));
     assert_eq!(process_stmt("switch ($test) { case 1: case 2: case 3: case 4: echo 1; }"), Expr::Switch(Box::new(Expr::Variable("test".into())),
         vec![(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3), Expr::Int(4)], Expr::Echo(vec![Expr::Int(1)])) ]));
+    assert_eq!(process_stmt("{ switch ($test) { case 1: echo 2; } echo 3; }"), Expr::Block(vec![Expr::Switch(Box::new(Expr::Variable("test".into())),
+        vec![ (vec![Expr::Int(1)], Expr::Echo(vec![Expr::Int(2)])) ]),
+        Expr::Echo(vec![Expr::Int(3)])
+    ]));
 }
 
 #[test]
