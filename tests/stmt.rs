@@ -321,3 +321,8 @@ fn parse_stmt_new_as_param() {
         Expr::New(Box::new(Expr::Path(Path::Identifier("Foo".into()))), vec![])])
     );
 }
+
+#[test]
+fn parse_stmt_new() {
+    assert_eq!(process_stmt("return new $var($this);"), Expr::Return(Box::new(Expr::New(Box::new(Expr::Variable("var".into())), vec![Expr::Variable("this".into())]))));
+}

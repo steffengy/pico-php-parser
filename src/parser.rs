@@ -189,11 +189,15 @@ impl_rdp! {
         ref_expression                  =  { ["&"] ~ assignment_expression }
         clone_expression                =  { ["clone"] ~ expression }
         object_creation_expression      =  {
-            ( ["new"] ~ class_type_designator ~ function_call? ) |
+            ( ["new"] ~ class_type_designator ~ object_creation_constructor? ) |
             ( ["new"] ~ ["class"] ~ ["("] ~ argument_expression_list? ~ [")"] ~ class_base_clause? ~ class_interface_clause? ~ (["{"] ~ ["}"])? ) | //TODO: weird?
             ( ["new"] ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? ~ ["}"] )
         }
-        class_type_designator           = _{ qualified_name | expression }
+        // this works as a kind of end token for object_creation_expression (1st form)
+        object_creation_constructor     =  { function_call }
+        class_type_designator           = _{ qualified_name | new_variable }
+        // TODO: support more of `new_variable` (see zend_language_parser.y)
+        new_variable                    = _{ variable_name }
         array_creation_expression       =  {
             (["array"] ~ ["("] ~ array_initializer? ~ &[")"] ~ array_creation_end) |
             (["["] ~ array_initializer? ~ &["]"] ~ array_creation_end)
@@ -718,19 +722,19 @@ impl_rdp! {
             (_: error_control_expression, _: expression, e: _expression()) => Ok(Expr::ErrorControl(Box::new(try!(e))))
         }
 
-        _qualified_name_or_expr(&self) -> Result<Expr<'input>, ParseError> {
+        _class_type_designator(&self) -> Result<Expr<'input>, ParseError> {
             (_: qualified_name, qn: _qualified_name()) => Ok(Expr::Path(qualified_name_to_path(qn))),
-            (_: expression, e: _expression()) => e,
+            (_: variable_name, &name: name) => Ok(Expr::Variable(name.into())),
         }
 
         _postfix_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
             (_: primary_expression, e: _primary_expression()) => e,
             (_: clone_expression, _: expression, e: _expression()) => Ok(Expr::Clone(Box::new(try!(e)))),
             (_: ref_expression, _: assignment_expression, e: _assignment_expression()) => Ok(Expr::Reference(Box::new(try!(e)))),
-            (_: object_creation_expression, e: _qualified_name_or_expr(), _: function_call, args: _call_args(), _: function_call_end) => {
+            (_: object_creation_expression, e: _class_type_designator(), _: object_creation_constructor, _: function_call, args: _call_args(), _: function_call_end) => {
                 Ok(Expr::New(Box::new(try!(e)), try!(args).into_iter().collect()))
             },
-            (_: object_creation_expression, e: _qualified_name_or_expr()) => Ok(Expr::New(Box::new(try!(e)), vec![])),
+            (_: object_creation_expression, e: _class_type_designator()) => Ok(Expr::New(Box::new(try!(e)), vec![])),
             (_: array_creation_expression, values: _array_element_initializers(), _: array_creation_end) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
             }
