@@ -193,7 +193,11 @@ impl_rdp! {
             ( ["new"] ~ class_base_clause? ~ class_interface_clause? ~ ["{"] ~ class_member_declarations? ~ ["}"] )
         }
         class_type_designator           = _{ qualified_name | expression }
-        array_creation_expression       =  { (["array"] ~ ["("] ~ array_initializer? ~ [")"]) | (["["] ~ array_initializer? ~ ["]"]) }
+        array_creation_expression       =  {
+            (["array"] ~ ["("] ~ array_initializer? ~ &[")"] ~ array_creation_end) |
+            (["["] ~ array_initializer? ~ &["]"] ~ array_creation_end)
+        }
+        array_creation_end              =  { [")"] | ["]"] }
         array_initializer               = _{ array_initializer_list ~ [","]? }
         array_initializer_list          = _{ array_element_initializer ~  ([","] ~ array_element_initializer)* }
         array_element_initializer       =  { (element_key ~ ["=>"] ~ element_value) | element_value }
@@ -602,7 +606,7 @@ impl_rdp! {
         }
 
         _constant_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: array_creation_expression, values: _array_element_initializers()) => {
+            (_: array_creation_expression, values: _array_element_initializers(), _: array_creation_end) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
             },
             (_: expression, e: _expression()) => e,
@@ -725,7 +729,7 @@ impl_rdp! {
                 Ok(Expr::New(Box::new(try!(e)), try!(args).into_iter().collect()))
             },
             (_: object_creation_expression, e: _qualified_name_or_expr()) => Ok(Expr::New(Box::new(try!(e)), vec![])),
-            (_: array_creation_expression, values: _array_element_initializers()) => {
+            (_: array_creation_expression, values: _array_element_initializers(), _: array_creation_end) => {
                 Ok(Expr::Array(try!(values).into_iter().map(|x| (Box::new(x.0), Box::new(x.1))).collect()))
             }
         }
