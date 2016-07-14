@@ -137,6 +137,8 @@ pub enum Expr<'a> {
     If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     While(Box<Expr<'a>>, Box<Expr<'a>>),
     DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
+    /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
+    For(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
     /// Try(TryBlock, CatchClauses, FinallyClause)
     Try(Box<Expr<'a>>, Vec<CatchClause<'a>>, Box<Expr<'a>>),
@@ -154,6 +156,15 @@ pub enum Expr<'a> {
 
     // These are not actual expressions, but will be stored as such, before any filtering happens
     Decl(Decl<'a>),
+}
+
+impl<'a> Expr<'a> {
+    pub fn is_none(&self) -> bool {
+        match *self {
+            Expr::None => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

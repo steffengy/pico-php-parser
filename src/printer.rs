@@ -155,12 +155,9 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                 try!(write!(printer, "["));
                 for (i, item) in items.iter().enumerate() {
                     try!(write_comma_separator(printer, i));
-                    match item.0 {
-                        Expr::None => (),
-                        ref x => {
-                            try!(x.pretty_print(printer));
+                    if !item.0.is_none() {
+                            try!(item.0.pretty_print(printer));
                             try!(write!(printer, " => "));
-                        }
                     }
                     try!(item.1.pretty_print(printer))
                 }
@@ -211,15 +208,12 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                 write!(printer, ")")
             },
             Expr::Return(ref arg) => {
-                let result = write!(printer, "return");
-                match **arg {
-                    Expr::None => result,
-                    ref arg => {
-                        try!(result);
-                        try!(write!(printer, " "));
-                        arg.pretty_print(printer)
-                    }
+                try!(write!(printer, "return"));
+                if !arg.is_none() {
+                    try!(write!(printer, " "));
+                    try!(arg.pretty_print(printer));
                 }
+                Ok(())
             },
             Expr::Throw(ref arg) => {
                 try!(write!(printer, "throw "));
@@ -357,22 +351,18 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                 try!(write!(printer, "if ("));
                 try!(condition.pretty_print(printer));
                 try!(write!(printer, ") "));
-                let result = case_true.pretty_print(printer);
-                match **case_else {
-                    Expr::None => result,
-                    _ => {
-                        try!(result);
-                        try!(write!(printer, "else "));
-                        case_else.pretty_print(printer)
-                    }
+                try!(case_true.pretty_print(printer));
+                if !case_else.is_none() {
+                    try!(write!(printer, "else "));
+                    try!(case_else.pretty_print(printer));
                 }
+                Ok(())
             },
             Expr::TernaryIf(ref condition, ref case_true, ref case_else) => {
                 try!(condition.pretty_print(printer));
                 try!(write!(printer, "?"));
-                match **case_true {
-                    Expr::None => (),
-                    _ => try!(case_true.pretty_print(printer)),
+                if !case_true.is_none() {
+                    try!(case_true.pretty_print(printer));
                 }
                 try!(write!(printer, ":"));
                 case_else.pretty_print(printer)
@@ -390,16 +380,29 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                 try!(condition.pretty_print(printer));
                 write!(printer, ")")
             },
+            Expr::For(ref init, ref looper, ref end_act, ref stmt) => {
+                try!(write!(printer, "for ("));
+                if !init.is_none() {
+                    try!(init.pretty_print(printer));
+                }
+                try!(write!(printer, "; "));
+                if !looper.is_none() {
+                    try!(looper.pretty_print(printer));
+                }
+                try!(write!(printer, "; "));
+                if !end_act.is_none() {
+                    try!(end_act.pretty_print(printer));
+                }
+                try!(write!(printer, ") "));
+                stmt.pretty_print(printer)
+            },
             Expr::ForEach(ref obj, ref k, ref v, ref body) => {
                 try!(write!(printer, "foreach ("));
                 try!(obj.pretty_print(printer));
                 try!(write!(printer, " as "));
-                match **k {
-                    Expr::None => (),
-                    _ => {
-                        try!(k.pretty_print(printer));
-                        try!(write!(printer, " => "));
-                    }
+                if !k.is_none() {
+                    try!(k.pretty_print(printer));
+                    try!(write!(printer, " => "));
                 }
                 try!(v.pretty_print(printer));
                 try!(write!(printer, ") "));
@@ -447,9 +450,8 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                             try!(write!(printer, " => "));
                         }
                     }
-                    match item.1 {
-                        Expr::None => (),
-                        ref x => try!(x.pretty_print(printer)),
+                    if !item.1.is_none() {
+                        try!(item.1.pretty_print(printer))
                     }
                 }
                 write!(printer, ")")
@@ -462,13 +464,11 @@ impl<'a, W: Write> PrettyPrint<W> for Expr<'a> {
                     try!(write!(printer, "${}) ", clause.var));
                     try!(clause.block.pretty_print(printer));
                 }
-                match **finally {
-                    Expr::None => Ok(()),
-                    ref finally => {
-                        try!(write!(printer, "finally "));
-                        finally.pretty_print(printer)
-                    }
+                if finally.is_none() {
+                    return Ok(())
                 }
+                try!(write!(printer, "finally "));
+                finally.pretty_print(printer)
             },
             Expr::Decl(ref decl) => decl.pretty_print(printer),
         };
@@ -635,12 +635,9 @@ impl<'a, W: Write> PrettyPrint<W> for ClassMember<'a> {
             ClassMember::Property(ref modifiers, ref name, ref default) => {
                 assert!(!printer.inside_iface);
                 try!(write!(printer, "{} ${}", modifiers, name));
-                match *default {
-                    Expr::None => (),
-                    _ => {
-                        try!(write!(printer, " = "));
-                        try!(default.pretty_print(printer))
-                    }
+                if !default.is_none() {
+                    try!(write!(printer, " = "));
+                    try!(default.pretty_print(printer))
                 }
                 write!(printer, ";")
             },

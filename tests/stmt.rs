@@ -85,6 +85,16 @@ fn parse_stmt_do_while() {
 }
 
 #[test]
+fn parse_stmt_for() {
+    assert_eq!(process_stmt("for ($i = 0; $i < 10; $i++) { echo 1; }"), Expr::For(
+        Box::new(Expr::Assign(Box::new(Expr::Variable("i".into())), Box::new(Expr::Int(0)))),
+        Box::new(Expr::BinaryOp(Op::Lt, Box::new(Expr::Variable("i".into())), Box::new(Expr::Int(10)))),
+        Box::new(Expr::UnaryOp(UnaryOp::PostInc, Box::new(Expr::Variable("i".into())))),
+        Box::new(Expr::Block(vec![Expr::Echo(vec![Expr::Int(1)])])),
+    ));
+}
+
+#[test]
 fn parse_stmt_foreach() {
     assert_eq!(process_stmt("foreach ($test as $v) { ok(); }"), Expr::ForEach(
         Box::new(Expr::Variable("test".into())),
