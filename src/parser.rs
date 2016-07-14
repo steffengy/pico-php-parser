@@ -303,14 +303,13 @@ impl_rdp! {
         op_pow                          =  { ["**"] }
 
         // Section: Conditional Operator
-        conditional_expression          =  {
-            ternary_expression |
-            binary_expression
-        }
+        // According to the documentation: conditional_expression          =  { ternary_expression |binary_expression }
+        // which really isn't a) correct b) required anywhere
 
         ternary_expression              =  {
-            binary_expression ~ ["?"] ~ expression? ~ [":"] ~ conditional_expression
+            binary_expression ~ ["?"] ~ expression? ~ ternary_else ~ expression
         }
+        ternary_else                    =  { [":"] }
 
         // Section: Coalesce Operator (TODO: in the documentation it's logical-inc-OR-expression, which doesn't exist. typo?)
         coalesce_expression            =  { binary_expression ~ ["??"] ~ expression }
@@ -655,7 +654,7 @@ impl_rdp! {
         }
 
         _conditional_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: ternary_expression, _: binary_expression, e: _binary_expression(), then: _optional_expression(), _: conditional_expression, else_: _conditional_expression()) => {
+            (_: ternary_expression, _: binary_expression, e: _binary_expression(), then: _optional_expression(), _: ternary_else, _: expression, else_: _expression()) => {
                 Ok(Expr::TernaryIf(Box::new(try!(e)), Box::new(try!(then)), Box::new(try!(else_))))
             },
             (_: binary_expression, e: _binary_expression()) => e,

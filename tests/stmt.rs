@@ -14,6 +14,14 @@ fn parse_stmt_return() {
 }
 
 #[test]
+fn parse_stmt_return_ternary_assign() {
+    assert_eq!(process_stmt("return isset($a) ? $b : $c = $d;"), Expr::Return(Box::new(Expr::TernaryIf(
+        Box::new(Expr::Isset(vec![Expr::Variable("a".into())])), Box::new(Expr::Variable("b".into())),
+        Box::new(Expr::Assign(Box::new(Expr::Variable("c".into())), Box::new(Expr::Variable("d".into()))))
+    ))));
+}
+
+#[test]
 fn parse_stmt_assignment() {
     assert_eq!(process_stmt(r#"$test=4;"#), Expr::Assign(Box::new(Expr::Variable("test".into())), Box::new(Expr::Int(4))));
     assert_eq!(process_stmt(r#"$test["a"]=4+$b;"#), Expr::Assign(Box::new(
