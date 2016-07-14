@@ -45,6 +45,7 @@ fn parse_expr_string() {
     assert_eq!(process_expr(r#""\xe7\x9a\x84""#), Expr::String("的".into()));
     assert_eq!(process_expr(r#""a\142\143d""#), Expr::String("abcd".into()));
     assert_eq!(process_expr(r#""a\"b\\\"c\\\"d\"e""#), Expr::String(r#"a"b\"c\"d"e"#.into()));
+    assert_eq!(process_expr(r#""abc\ClassName""#), Expr::String("abc\\ClassName".into()));
 }
 
 #[test]

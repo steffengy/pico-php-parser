@@ -93,11 +93,14 @@ impl_rdp! {
         //        : String Literals (incomplete)
         string_literal                  = @{ single_quoted_string_literal | double_quoted_string_literal | heredoc_string_literal | nowdoc_string_literal }
         single_quoted_string_literal    = @{ ["b"]? ~ ["'"] ~ sq_chars* ~ ["'"] }
-        sq_chars                         = @{ sq_escape_sequence | (!(["'"] | ["\\"]) ~ any)+ }
+        sq_chars                        = @{ sq_escape_sequence | (!(["'"] | ["\\"]) ~ any)+ }
         sq_escape_sequence              = @{ ["\\'"] | ["\\\\"] | ["\\"] }
         double_quoted_string_literal    = @{ ["b"]? ~ ["\""] ~ dq_chars* ~ ["\""] }
-        dq_chars                         = @{ dq_escape_sequence | (!(["\""] | ["\\"]) ~ any)+ } // todo, incomplete, as below
-        dq_escape_sequence              = @{ dq_simple_escape_sequence | dq_octal_escape_sequence | dq_hexadecimal_escape_sequence | dq_unicode_escape_sequence }
+        dq_chars                        = @{ dq_escape_sequence | (!(["\""] | ["\\"]) ~ any)+ } // todo, incomplete, as below
+        dq_escape_sequence              = @{
+            dq_simple_escape_sequence | dq_octal_escape_sequence | dq_hexadecimal_escape_sequence | dq_unicode_escape_sequence | dq_invalid_escape_sequence
+        }
+        dq_invalid_escape_sequence      = @{ ["\\"] ~ any }
         dq_simple_escape_sequence       = @{ ["\\\""] | ["\\\\"] | ["\\$"] | ["\\e"] | ["\\f"] | ["\\n"] | ["\\r"] | ["\\t"] | ["\\v"] }
         dq_octal_escape_sequence        = @{ ["\\"] ~ octal_sequence }
         octal_sequence                  = @{
@@ -1408,6 +1411,10 @@ impl_rdp! {
                     "\\\\" => "\\",
                     _ => unreachable!()
                 }.to_owned() + &try!(next))
+            },
+            // invalid/unknown escape sequence - just ignore it (PHP's behavior)
+            (_: dq_chars, _: dq_escape_sequence, &es: dq_invalid_escape_sequence, next: _dq_string()) => {
+                Ok(es.to_owned() + &try!(next))
             },
             // handle a character
             (&ch: dq_chars, next: _dq_string()) => {
