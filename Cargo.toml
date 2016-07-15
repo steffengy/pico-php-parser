@@ -1,0 +1,6 @@
+[package]
+name = "pico_php_parser"
+version = "0.1.0"
+authors = ["Steffen <steffen.butzer@outlook.com>"]
+
+[dependencies]
