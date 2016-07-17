@@ -17,6 +17,27 @@ pub use ast::{Expr, Expr_, UnaryOp, Op, Path};
 pub struct Parser {
     interner: Interner,
     tokens: Vec<TokenSpan>,
+    pos: usize,
+}
+
+impl Parser {
+    fn new(tokens: Vec<TokenSpan>, interner: Interner) -> Parser {
+        Parser {
+            tokens: tokens,
+            interner: interner,
+            pos: 0,
+        }
+    }
+
+    #[inline]
+    fn advance(&mut self, n: isize) {
+        self.pos = (self.pos as isize + n as isize) as usize;
+    }
+
+    #[inline]
+    fn next_token(&mut self) -> Option<&TokenSpan> {
+        self.tokens.get(self.pos)
+    }
 }
 
 enum Associativity {
@@ -102,8 +123,9 @@ macro_rules! alt {
 // check if the next token is X, if return and execute block
 macro_rules! if_lookahead {
     ($self_:expr, $a:pat, $v:ident, $block:expr, $else_block:expr) => {
-        if let Some(&TokenSpan($a, _)) = $self_.tokens.last() {
-            let $v = $self_.tokens.pop().unwrap();
+        if let Some(&TokenSpan($a, _)) = $self_.next_token() {
+            let $v = $self_.next_token().unwrap().clone();
+            $self_.advance(1);
             $block
         } else {
             $else_block
@@ -114,10 +136,11 @@ macro_rules! if_lookahead {
 
 impl Parser {
     fn parse_unary_expression(&mut self, precedence: Precedence) -> Result<Expr, ()> {
-        let left = match self.tokens.pop() {
-            Some(x) => x,
+        let left = match self.next_token() {
+            Some(x) => x.clone(),
             None => return Err(()),
         };
+        self.advance(1);
         let mut left = match left.0 {
             t@Token::Plus | t@Token::Minus | t@Token::BwNot | t@Token::BoolNot => {
                 let op = match t {
@@ -130,7 +153,7 @@ impl Parser {
                 Expr(Expr_::UnaryOp(op, Box::new(try!(self.parse_expression(Precedence::Unary)))), left.1)
             },
             _ => {
-                self.tokens.push(left);
+                self.advance(-1);
                 try!(self.parse_other_expression())
             }
         };
@@ -147,7 +170,7 @@ impl Parser {
     fn parse_binary_expression(&mut self, left: &mut Expr, precedence: Precedence) -> Result<bool, ()> {
         // lookahead to check for binary expression
         let binary_op = {
-            match self.tokens.last() {
+            match self.next_token() {
                 Some(x) => match x.0 {
                     Token::BoolOr => Some(Op::Or),
                     Token::BoolAnd => Some(Op::And),
@@ -185,7 +208,8 @@ impl Parser {
             None => return Ok(false),
         };
         // consume te binary-operator token
-        let binary_token = self.tokens.pop().unwrap();
+        let binary_token = self.next_token().unwrap().clone();
+        self.advance(1);
         let precedence = match binary_token.0.associativity() {
             Associativity::Right => Precedence::from_usize((precedence as usize) - 1),
             Associativity::Left => precedence,
@@ -335,7 +359,7 @@ impl Parser {
                 // variable '=' expr
                 // variable '=' '&' variable
                 // and all variable T_<OP>_ASSIGNs
-                let assign_type = match self.tokens.last() {
+                let assign_type = match self.next_token() {
                     Some(&TokenSpan(ref x, _)) => match *x {
                         Token::Equal => Some(Op::Eq),
                         Token::PlusEqual => Some(Op::Add),
@@ -354,13 +378,14 @@ impl Parser {
                     None => None,
                 };
                 if let Some(assign_type) = assign_type {
-                    let span = match self.tokens.pop() {
-                        Some(TokenSpan(_, span)) => span,
+                    let span = match self.next_token() {
+                        Some(&TokenSpan(_, ref span)) => span.clone(),
                         _ => unreachable!()
                     };
-                    let by_ref = match (&assign_type, self.tokens.last()) {
+                    self.advance(1);
+                    let by_ref = match (&assign_type, self.next_token()) {
                         (&Op::Eq, Some(&TokenSpan(Token::Ampersand, _))) => {
-                            self.tokens.pop();
+                            self.advance(1);
                             true
                         },
                         _ => false,
@@ -391,19 +416,20 @@ impl Parser {
     fn parse_namespace_name(&mut self) -> Result<Expr, ()> {
         // T_STRING ~ (NS_SEPARATOR ~ T_STRING)+
         let mut fragments = vec![];
-        while !self.tokens.is_empty() {
+        while let Some(_) = self.next_token() {
             if_lookahead!(self, Token::String(_), token, {
                 match token {
                     TokenSpan(Token::String(str_), span) => fragments.push((str_, span)),
                     _ => unreachable!(),
                 }
-                if let Some(&TokenSpan(Token::NsSeparator, _)) = self.tokens.last() {
+                let old_pos = self.pos;
+                if_lookahead!(self, Token::NsSeparator, _tok, {
                     // lookahead to ensure it's followed by string
-                    if let Some(&TokenSpan(Token::String(_), _)) = self.tokens.iter().nth(self.tokens.len()-2) {
-                        self.tokens.pop(); // pop NS_SEPARATOR
+                    if_lookahead!(self, Token::String(_), _tok, {
+                        self.advance(-1); // we want to use the string in the next iteration
                         continue;
-                    }
-                }
+                    }, self.pos = old_pos);
+                });
                 let span = Span { start: fragments.first().map(|x| x.1.start).unwrap(), end: fragments.last().map(|x| x.1.end).unwrap(), ..Span::new() };
                 return Ok(Expr(Expr_::Path(match fragments.len() {
                     0 => unreachable!(),
@@ -425,7 +451,7 @@ impl Parser {
         //TODO: |   T_NAMESPACE T_NS_SEPARATOR namespace_name   { $$ = $3; $$->attr = ZEND_NAME_RELATIVE; }
         // try to consume the \\ if one exists so that a namespace_name will be matched
         // then the path will be a fully quallified (FQ)
-        let fq = if_lookahead!(self, Token::NsSeparator, _token, { self.tokens.pop(); true }, false);;
+        let fq = if_lookahead!(self, Token::NsSeparator, _token, true, false);
         match self.parse_namespace_name() {
             // TODO: inject FQDN as flag or something?
             Ok(x) => Ok(x),
@@ -476,7 +502,9 @@ impl Parser {
     }
 
     fn parse_scalar(&mut self) -> Result<Expr, ()> {
-        match self.tokens.pop() {
+        let next_token = self.next_token().map(|x| x.clone());
+        self.advance(1);
+        match next_token {
             Some(x) => Ok(Expr(match x.0 {
                 // LNUMBER
                 Token::Int(x) => Expr_::Int(x),
@@ -498,11 +526,11 @@ impl Parser {
                 },
                 // TODO  |   T_START_HEREDOC encaps_list T_END_HEREDOC { $$ = $2; }
                 _ => {
-                    self.tokens.push(x);
+                    self.advance(-1);
                     alt!(self.parse_dereferencable_scalar());
                     return self.parse_constant();
                 }
-            }, x.1)),
+            }, x.1.clone())),
             None => Err(())
         }
     }
@@ -522,7 +550,7 @@ impl Parser {
     fn parse_tokens(interner: Interner, toks: Vec<TokenSpan>) -> Vec<Expr> {
         // strip whitespace and unnecessary tokens
         let mut tokens: Vec<TokenSpan> = vec![];
-        for tok in toks.into_iter().rev() {
+        for tok in toks.into_iter() {
             match tok.0 {
                 // TODO: pass doc comment in the span on (don't ignore them)
                 Token::Comment(_) | Token::InlineHtml(_) | Token::OpenTag => (),
@@ -531,10 +559,7 @@ impl Parser {
             }
         }
         println!("{:?}", tokens);
-        let mut p = Parser {
-            tokens: tokens,
-            interner: interner,
-        };
+        let mut p = Parser::new(tokens, interner);
         // error handling..
         let mut exprs = vec![];
         match p.parse_top_statement() {

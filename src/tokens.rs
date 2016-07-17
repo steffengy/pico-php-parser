@@ -1,6 +1,6 @@
 use interner::RcStr;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TokenSpan(pub Token, pub Span);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,7 +33,7 @@ pub enum SyntaxError {
 }
 
 #[allow(dead_code)] //TODO: remove some day
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     End,
     // very simple tokens

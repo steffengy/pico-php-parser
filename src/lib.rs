@@ -14,5 +14,5 @@ mod tokenizer;
 mod parser;
 pub use parser::*;
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests;
