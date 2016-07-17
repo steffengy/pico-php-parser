@@ -137,6 +137,7 @@ pub enum Token {
     Use,
     Insteadof,
     Global,
+    Isset,
     Empty,
     HaltCompiler,
     Static,

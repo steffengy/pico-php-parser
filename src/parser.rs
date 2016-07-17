@@ -12,7 +12,7 @@ use std::borrow::Borrow;
 use tokenizer::{Tokenizer, Token, TokenSpan};
 use interner::Interner;
 pub use tokenizer::{Span, SyntaxError};
-pub use ast::{Expr, Expr_, UnaryOp, Op, Path};
+pub use ast::{Expr, Expr_, IncludeTy, UnaryOp, Op, Path, Ty};
 
 pub struct Parser {
     interner: Interner,
@@ -142,19 +142,22 @@ impl Parser {
         };
         self.advance(1);
         let mut left = match left.0 {
-            t@Token::Plus | t@Token::Minus | t@Token::BwNot | t@Token::BoolNot => {
-                let op = match t {
+            Token::Plus | Token::Minus | Token::BwNot | Token::BoolNot | Token::Silence | Token::Increment | Token::Decrement => {
+                let op = match left.0 {
                     Token::Plus => UnaryOp::Positive,
                     Token::Minus => UnaryOp::Negative,
                     Token::BwNot => UnaryOp::BitwiseNot,
                     Token::BoolNot => UnaryOp::Not,
+                    Token::Silence => UnaryOp::SilenceErrors,
+                    Token::Increment => UnaryOp::PreInc,
+                    Token::Decrement => UnaryOp::PreDec,
                     _ => unreachable!(),
                 };
                 Expr(Expr_::UnaryOp(op, Box::new(try!(self.parse_expression(Precedence::Unary)))), left.1)
             },
             _ => {
                 self.advance(-1);
-                try!(self.parse_other_expression())
+                try!(self.parse_postfix_expression())
             }
         };
         // handle other binary expressions
@@ -255,29 +258,48 @@ impl Parser {
         Err(())
     }
 
-    fn parse_function_call(&mut self) -> Result<Expr, ()> {
-        let name_expr = try!(self.parse_name());
-        let args = try!(self.parse_argument_list());
+    fn parse_function_call(&mut self, name_arg: Option<Expr>) -> Result<Expr, ((), Option<Expr>)> {
+        let old_pos = self.pos;
+        let name_expr = match name_arg {
+            None => try!(self.parse_name().map_err(|x| (x, None))),
+            Some(name_expr) => name_expr,
+        };
+        let args = match self.parse_argument_list() {
+            Err(x) => {
+                self.pos = old_pos;
+                return Err((x, Some(name_expr)));
+            },
+            Ok(x) => x,
+        };
         Ok(Expr(Expr_::Call(Box::new(name_expr), args), Span::new()))
     }
 
     fn parse_callable_variable(&mut self) -> Result<Expr, ()> {
-        let var_expr = match self.parse_simple_variable() {
-            Err(x) => try!(self.parse_function_call()),
+        let mut var_expr = match self.parse_simple_variable() {
+            Err(x) => try!(self.parse_function_call(None).map_err(|x| x.0)),
             Ok(x) => x,
         };
         // ('[' optional_expr ']')+
-        let mut arr_members = vec![];
+        // TODO: fix the spans
         loop {
             if_lookahead!(self, Token::SquareBracketOpen, _tok, match self.parse_opt_expression(Precedence::None) {
                 Err(x) => return Err(x),
-                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, arr_members.push(expr), return Err(())),
-            }, break);
+                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, if let Some(expr) = expr {
+                    if let Expr(Expr_::ArrayIdx(_, ref mut idxs), _) = var_expr {
+                        idxs.push(expr);
+                    } else {
+                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), Span::new());
+                    }
+                    continue
+                }),
+            });
+            // attempt to inline parse_function_call, for "callable_expr argument_list"
+            var_expr = match self.parse_function_call(Some(var_expr)) {
+                Err((err, var_expr)) => return Ok(var_expr.unwrap()),
+                Ok(x) => x,
+            };
         }
-        if !arr_members.is_empty() {
-            return Ok(Expr(Expr_::ArrayIdx(Box::new(var_expr), arr_members), Span::new()));
-        }
-        Ok(var_expr)
+        Err(())
     }
 
     fn parse_property_name(&mut self) -> Result<Expr, ()> {
@@ -297,10 +319,10 @@ impl Parser {
         Err(())
     }
 
-    fn parse_dereferencable(&mut self, parsed_variable: Expr) -> Result<Expr, ()> {
-        let var = match parsed_variable.0 {
-            Expr_::None => try!(self.parse_variable()),
-            _ => parsed_variable,
+    fn parse_dereferencable(&mut self, parsed_variable: Option<Expr>) -> Result<Expr, ()> {
+        let var = match parsed_variable {
+            None => try!(self.parse_variable()),
+            Some(parsed_variable) => parsed_variable,
         };
         // dereferencable T_OBJECT_OPERATOR property_name = (T_OBJECT_OPERATOR)+
         let mut obj_members = vec![];
@@ -322,7 +344,7 @@ impl Parser {
         // so that it "knows" to stop the left-recursion there
         match self.parse_callable_variable() {
             Err(x) => return Err(x),
-            Ok(x) => return self.parse_dereferencable(x),
+            Ok(x) => return self.parse_dereferencable(Some(x)),
         }
     }
 
@@ -333,14 +355,26 @@ impl Parser {
         Err(())
     }
 
-    fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Expr, ()> {
+    fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Option<Expr>, ()> {
         match self.parse_expression(prec) {
-            Err(()) => return Ok(Expr(Expr_::None, Span::new())),
-            x => x,
+            Err(()) => return Ok(None),
+            x => x.map(|x| Some(x)),
         }
     }
 
-    /// parsing all expressions after the precedence applying ("callback")
+    /// parsing all expressions after the precedence applying (stage 1 "callback")
+    fn parse_postfix_expression(&mut self) -> Result<Expr, ()> {
+        let expr = try!(self.parse_other_expression());
+        if_lookahead!(self, Token::Increment, token, {
+            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostInc, Box::new(expr)), token.1));
+        });
+        if_lookahead!(self, Token::Decrement, token, {
+            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostDec, Box::new(expr)), token.1));
+        });
+        Ok(expr)
+    }
+
+    /// parsing all expressions after the precedence applying (stage 2 "callback")
     fn parse_other_expression(&mut self) -> Result<Expr, ()> {
         // '(' expr ')'
         if_lookahead!(self, Token::ParenthesesOpen, _token, {
@@ -353,7 +387,70 @@ impl Parser {
             });
             return Err(())
         });
-        alt!(self.parse_scalar());
+        // internal_functions_in_yacc / casts
+        let ret = match self.next_token() {
+            Some(&TokenSpan(ref x, ref span)) => match *x {
+                    Token::Include| Token::IncludeOnce | Token::Require | Token::RequireOnce
+                    | Token::Isset | Token::Empty | Token::CastInt | Token::CastDouble | Token::CastString
+                    | Token::CastArray | Token::CastObject | Token::CastBool | Token::CastUnset => Some((x.clone(), span.clone())),
+                    _ => None,
+            },
+            None => None,
+        };
+        if let Some((token, span)) = ret {
+            self.advance(1);
+            // several cast operators
+            let cast_ty = match token {
+                Token::CastInt => Some(Ty::Int),
+                Token::CastDouble => Some(Ty::Double),
+                Token::CastString => Some(Ty::String),
+                Token::CastArray => Some(Ty::Array),
+                Token::CastObject => Some(Ty::Object),
+                Token::CastBool => Some(Ty::Bool),
+                Token::CastUnset => unimplemented!(),
+                _ => None,
+            };
+            if let Some(cast_ty) = cast_ty {
+                return Ok(Expr(Expr_::Cast(cast_ty, Box::new(try!(self.parse_expression(Precedence::None)))), span));
+            }
+            // isset/empty
+            match token {
+                Token::Isset | Token::Empty => {
+                    if_lookahead!(self, Token::ParenthesesOpen, _token, {
+                        let mut args = vec![];
+                        while {
+                            args.push(try!(self.parse_expression(Precedence::None)));
+                            if let Token::Isset = token {
+                                if_lookahead!(self, Token::Comma, _token, true, false)
+                            } else {
+                                false
+                            }
+                        } {}
+                        if_lookahead!(self, Token::ParenthesesClose, _token, {}, { return Err(()) });
+                        let expr = match token {
+                            Token::Isset => Expr_::Isset(args),
+                            Token::Empty => {
+                                assert_eq!(args.len(), 1);
+                                Expr_::Empty(Box::new(args.pop().unwrap()))
+                            },
+                            _ => unreachable!(),
+                        };
+                        return Ok(Expr(expr, span))
+                    }, return Err(()));
+                },
+                _ => (),
+            }
+            // include/require
+            let ity = match token {
+                Token::Include => IncludeTy::Include,
+                Token::IncludeOnce => IncludeTy::IncludeOnce,
+                Token::Require => IncludeTy::Require,
+                Token::RequireOnce => IncludeTy::RequireOnce,
+                _ => unreachable!(),
+            };
+            return Ok(Expr(Expr_::Include(ity, Box::new(try!(self.parse_expression(Precedence::None)))), span))
+        }
+        // variable handling
         match self.parse_variable() {
             Ok(var) => {
                 // variable '=' expr
@@ -408,7 +505,7 @@ impl Parser {
             },
             _ => (),
         };
-        // TODO: move me here alt!(self.parse_scalar());
+        alt!(self.parse_scalar());
         println!("err other_expr");
         Err(())
     }

@@ -220,10 +220,10 @@ impl<'a> Tokenizer<'a> {
             return None
         }
 
-        //\u{c280} U+0080
-        //\u{c3BF} U+00FF
+        //\u{0080} U+0080
+        //\u{00BF} U+00FF
         let end_pos = self.input().chars().position(|x| match x {
-            'a'...'z' | 'A'...'Z' | '\u{c280}'...'\u{c3BF}' | '0'...'9' => false,
+            'a'...'z' | 'A'...'Z' | '\u{80}'...'\u{FF}' | '_' | '0'...'9' => false,
             _ => true,
         });
         let end_pos = match end_pos {
@@ -972,6 +972,7 @@ impl<'a> Tokenizer<'a> {
         ret_token!(match_token!(self, "use",  Use));
         ret_token!(match_token!(self, "insteadof",  Insteadof));
         ret_token!(match_token!(self, "global",  Global));
+        ret_token!(match_token!(self, "isset",  Isset));
         ret_token!(match_token!(self, "empty",  Empty));
         ret_token!(match_token!(self, "__halt_compiler",  HaltCompiler));
         ret_token!(match_token!(self, "static",  Static));

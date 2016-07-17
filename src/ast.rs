@@ -163,15 +163,6 @@ pub enum Expr_ {
     Decl(Decl),
 }
 
-impl Expr_ {
-    pub fn is_none(&self) -> bool {
-        match *self {
-            Expr_::None => true,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ty {
     Array,
@@ -181,7 +172,7 @@ pub enum Ty {
     Int,
     Double,
     String,
-    Object(Option<Path>),
+    Object,
 }
 
 #[derive(Clone, Debug, PartialEq)]
