@@ -1,26 +1,27 @@
 use std::borrow::Cow;
 use tokenizer::Span;
+use interner::RcStr;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ParsedItem<'a> {
-    Text(Cow<'a, str>),
-    CodeBlock(Vec<Expr<'a>>),
+pub enum ParsedItem {
+    Text(RcStr),
+    CodeBlock(Vec<Expr>),
 }
 
-pub type UseAlias<'a> = Option<Cow<'a, str>>;
+pub type UseAlias = Option<RcStr>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum UseClause<'a> {
-    QualifiedName(Path<'a>, UseAlias<'a>),
+pub enum UseClause {
+    QualifiedName(Path, UseAlias),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Path<'a> {
-    Identifier(Cow<'a, str>),
+pub enum Path {
+    Identifier(RcStr),
     /// An identifier which is prefixed by a namespace (e.g. a FQDN-class-path)
     /// fragment.1 = The namespace
     /// fragment.2 = The class
-    NsIdentifier(Cow<'a, str>, Cow<'a, str>),
+    NsIdentifier(RcStr, RcStr),
 }
 
 /// binary operators
@@ -94,75 +95,75 @@ pub enum ClassModifier {
 pub struct Modifiers(pub bool, pub Visibility, pub ClassModifier);
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Expr<'a>(pub Expr_<'a>, pub Span);
+pub struct Expr(pub Expr_, pub Span);
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr_<'a> {
+pub enum Expr_ {
     None,
     /// indicates the path to e.g. a namespace or is a simple identifier
-    Path(Path<'a>),
-    String(String),
+    Path(Path),
+    String(RcStr),
     Int(i64),
     Double(f64),
-    Array(Vec<(Expr<'a>, Expr<'a>)>),
-    Variable(Cow<'a, str>),
-    Reference(Box<Expr<'a>>),
-    Use(Vec<UseClause<'a>>),
-    Clone(Box<Expr<'a>>),
-    Exit(Box<Expr<'a>>),
-    Echo(Vec<Expr<'a>>),
-    Isset(Vec<Expr<'a>>),
-    Empty(Box<Expr<'a>>),
-    Unset(Vec<Expr<'a>>),
-    Return(Box<Expr<'a>>),
-    Throw(Box<Expr<'a>>),
+    Array(Vec<(Expr, Expr)>),
+    Variable(RcStr),
+    Reference(Box<Expr>),
+    Use(Vec<UseClause>),
+    Clone(Box<Expr>),
+    Exit(Box<Expr>),
+    Echo(Vec<Expr>),
+    Isset(Vec<Expr>),
+    Empty(Box<Expr>),
+    Unset(Vec<Expr>),
+    Return(Box<Expr>),
+    Throw(Box<Expr>),
     Break(usize),
     Continue(usize),
-    Block(Vec<Expr<'a>>),
+    Block(Vec<Expr>),
 
-    Include(IncludeTy, Box<Expr<'a>>),
-    ArrayIdx(Box<Expr<'a>>, Vec<Expr<'a>>),
-    ObjMember(Box<Expr<'a>>, Vec<Expr<'a>>),
-    StaticMember(Box<Expr<'a>>, Vec<Expr<'a>>),
-    Call(Box<Expr<'a>>, Vec<Expr<'a>>),
-    New(Box<Expr<'a>>, Vec<Expr<'a>>),
-    UnaryOp(UnaryOp, Box<Expr<'a>>),
-    BinaryOp(Op, Box<Expr<'a>>, Box<Expr<'a>>),
-    Cast(Ty<'a>, Box<Expr<'a>>),
-    Function(FunctionDecl<'a>),
+    Include(IncludeTy, Box<Expr>),
+    ArrayIdx(Box<Expr>, Vec<Expr>),
+    ObjMember(Box<Expr>, Vec<Expr>),
+    StaticMember(Box<Expr>, Vec<Expr>),
+    Call(Box<Expr>, Vec<Expr>),
+    New(Box<Expr>, Vec<Expr>),
+    UnaryOp(UnaryOp, Box<Expr>),
+    BinaryOp(Op, Box<Expr>, Box<Expr>),
+    Cast(Ty, Box<Expr>),
+    Function(FunctionDecl),
 
     // statements
-    Assign(Box<Expr<'a>>, Box<Expr<'a>>),
+    Assign(Box<Expr>, Box<Expr>),
     /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
-    CompoundAssign(Box<Expr<'a>>, Op, Box<Expr<'a>>),
-    AssignRef(Box<Expr<'a>>, Box<Expr<'a>>),
-    List(Vec<(Expr<'a>, Expr<'a>)>),
+    CompoundAssign(Box<Expr>, Op, Box<Expr>),
+    AssignRef(Box<Expr>, Box<Expr>),
+    List(Vec<(Expr, Expr)>),
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
-    If(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
-    While(Box<Expr<'a>>, Box<Expr<'a>>),
-    DoWhile(Box<Expr<'a>>, Box<Expr<'a>>),
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
+    While(Box<Expr>, Box<Expr>),
+    DoWhile(Box<Expr>, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
-    For(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
-    ForEach(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
+    For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
+    ForEach(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
     /// Try(TryBlock, CatchClauses, FinallyClause)
-    Try(Box<Expr<'a>>, Vec<CatchClause<'a>>, Box<Expr<'a>>),
+    Try(Box<Expr>, Vec<CatchClause>, Box<Expr>),
 
     /// switch (stmt=.0) [case item: body]+=.1
     /// All item-cases for a body will be included in the first-member Vec
     /// so basically we have a mapping from all-cases -> body in .1
     /// TODO: should be desugared into an if-statement
-    Switch(Box<Expr<'a>>, Vec<(Vec<Expr<'a>>, Expr<'a>)>),
+    Switch(Box<Expr>, Vec<(Vec<Expr>, Expr)>),
 
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used
     /// TODO: this should be desugared into an `If` during post-processing
-    TernaryIf(Box<Expr<'a>>, Box<Expr<'a>>, Box<Expr<'a>>),
+    TernaryIf(Box<Expr>, Box<Expr>, Box<Expr>),
 
     // These are not actual expressions, but will be stored as such, before any filtering happens
-    Decl(Decl<'a>),
+    Decl(Decl),
 }
 
-impl<'a> Expr_<'a> {
+impl Expr_ {
     pub fn is_none(&self) -> bool {
         match *self {
             Expr_::None => true,
@@ -172,7 +173,7 @@ impl<'a> Expr_<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Ty<'a> {
+pub enum Ty {
     Array,
     Callable,
     Bool,
@@ -180,7 +181,7 @@ pub enum Ty<'a> {
     Int,
     Double,
     String,
-    Object(Option<Path<'a>>),
+    Object(Option<Path>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -192,62 +193,62 @@ pub enum IncludeTy {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TraitUse<'a> {
-    InsteadOf((Path<'a>, Path<'a>), Vec<Path<'a>>),
-    As((Path<'a>, Path<'a>), Visibility, Option<Cow<'a, str>>),
+pub enum TraitUse {
+    InsteadOf((Path, Path), Vec<Path>),
+    As((Path, Path), Visibility, Option<RcStr>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ParamDefinition<'a> {
-    pub name: Cow<'a, str>,
+pub struct ParamDefinition {
+    pub name: RcStr,
     pub as_ref: bool,
     /// The type of the parameter
-    pub ty: Option<Ty<'a>>,
+    pub ty: Option<Ty>,
     /// The default value for the parameter
-    pub default: Expr<'a>,
+    pub default: Expr,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDecl<'a> {
-    pub params: Vec<ParamDefinition<'a>>,
-    pub body: Vec<Expr<'a>>,
+pub struct FunctionDecl {
+    pub params: Vec<ParamDefinition>,
+    pub body: Vec<Expr>,
     /// A list of variables to pass from the parent scope to the scope of this function
     /// So variables which are basically available shared into this function's scope
-    pub usev: Vec<Cow<'a, str>>,
+    pub usev: Vec<RcStr>,
     pub ret_ref: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ClassDecl<'a> {
+pub struct ClassDecl {
     pub cmod: ClassModifier,
-    pub name: Cow<'a, str>,
-    pub base_class: Option<Path<'a>>,
+    pub name: RcStr,
+    pub base_class: Option<Path>,
     /// The implemented interfaces of this class
-    pub implements: Vec<Path<'a>>,
-    pub members: Vec<ClassMember<'a>>,
+    pub implements: Vec<Path>,
+    pub members: Vec<ClassMember>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ClassMember<'a> {
-    Constant(Cow<'a, str>, Expr<'a>),
-    Property(Modifiers, Cow<'a, str>, Expr<'a>),
-    Method(Modifiers, Cow<'a, str>, FunctionDecl<'a>),
-    TraitUse(Vec<Path<'a>>, Vec<TraitUse<'a>>),
+pub enum ClassMember {
+    Constant(RcStr, Expr),
+    Property(Modifiers, RcStr, Expr),
+    Method(Modifiers, RcStr, FunctionDecl),
+    TraitUse(Vec<Path>, Vec<TraitUse>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Decl<'a> {
-    Namespace(Vec<Cow<'a, str>>),
-    GlobalFunction(Cow<'a, str>, FunctionDecl<'a>),
-    Class(ClassDecl<'a>),
-    Interface(Cow<'a, str>, Vec<Path<'a>>, Vec<ClassMember<'a>>),
-    Trait(Cow<'a, str>, Vec<ClassMember<'a>>),
-    StaticVars(Vec<(Cow<'a, str>, Expr<'a>)>),
+pub enum Decl {
+    Namespace(Vec<RcStr>),
+    GlobalFunction(RcStr, FunctionDecl),
+    Class(ClassDecl),
+    Interface(RcStr, Vec<Path>, Vec<ClassMember>),
+    Trait(RcStr, Vec<ClassMember>),
+    StaticVars(Vec<(RcStr, Expr)>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CatchClause<'a> {
-    pub ty: Path<'a>,
-    pub var: Cow<'a, str>,
-    pub block: Expr<'a>,
+pub struct CatchClause {
+    pub ty: Path,
+    pub var: RcStr,
+    pub block: Expr,
 }

@@ -8,11 +8,14 @@
 ///! [3] https://github.com/php/php-src/blob/ab304579ff046426f281e9a95abea8d611e38e1c/Zend/zend_language_parser.y
 
 use std::mem;
+use std::borrow::Borrow;
 use tokenizer::{Tokenizer, Token, TokenSpan};
+use interner::Interner;
 pub use tokenizer::{Span, SyntaxError};
 pub use ast::{Expr, Expr_, UnaryOp, Op, Path};
 
 pub struct Parser {
+    interner: Interner,
     tokens: Vec<TokenSpan>,
 }
 
@@ -110,7 +113,7 @@ macro_rules! if_lookahead {
 }
 
 impl Parser {
-    fn parse_unary_expression(&mut self, precedence: Precedence) -> Result<Expr<'static>, ()> {
+    fn parse_unary_expression(&mut self, precedence: Precedence) -> Result<Expr, ()> {
         let left = match self.tokens.pop() {
             Some(x) => x,
             None => return Err(()),
@@ -141,7 +144,7 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_binary_expression(&mut self, left: &mut Expr<'static>, precedence: Precedence) -> Result<bool, ()> {
+    fn parse_binary_expression(&mut self, left: &mut Expr, precedence: Precedence) -> Result<bool, ()> {
         // lookahead to check for binary expression
         let binary_op = {
             match self.tokens.last() {
@@ -193,7 +196,7 @@ impl Parser {
         Ok(true)
     }
 
-    fn parse_simple_variable(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_simple_variable(&mut self) -> Result<Expr, ()> {
         // TODO '$' '{' expr '}'
         // TODO '$' simple_variable
         if_lookahead!(self, Token::Dollar, _token, unimplemented!());
@@ -207,7 +210,7 @@ impl Parser {
         })
     }
 
-    fn parse_argument_list(&mut self) -> Result<Vec<Expr<'static>>, ()> {
+    fn parse_argument_list(&mut self) -> Result<Vec<Expr>, ()> {
         if_lookahead!(self, Token::ParenthesesOpen, _token, {
             if_lookahead!(self, Token::ParenthesesClose, _token, {
                 return Ok(vec![]);
@@ -228,13 +231,13 @@ impl Parser {
         Err(())
     }
 
-    fn parse_function_call(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_function_call(&mut self) -> Result<Expr, ()> {
         let name_expr = try!(self.parse_name());
         let args = try!(self.parse_argument_list());
         Ok(Expr(Expr_::Call(Box::new(name_expr), args), Span::new()))
     }
 
-    fn parse_callable_variable(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_callable_variable(&mut self) -> Result<Expr, ()> {
         let var_expr = match self.parse_simple_variable() {
             Err(x) => try!(self.parse_function_call()),
             Ok(x) => x,
@@ -253,7 +256,7 @@ impl Parser {
         Ok(var_expr)
     }
 
-    fn parse_property_name(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_property_name(&mut self) -> Result<Expr, ()> {
         alt!(self.parse_simple_variable());
         if_lookahead!(self, Token::String(_), token, {
             return Ok(match token.0 {
@@ -270,7 +273,7 @@ impl Parser {
         Err(())
     }
 
-    fn parse_dereferencable(&mut self, parsed_variable: Expr<'static>) -> Result<Expr<'static>, ()> {
+    fn parse_dereferencable(&mut self, parsed_variable: Expr) -> Result<Expr, ()> {
         let var = match parsed_variable.0 {
             Expr_::None => try!(self.parse_variable()),
             _ => parsed_variable,
@@ -289,7 +292,7 @@ impl Parser {
         Ok(var)
     }
 
-    fn parse_variable(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_variable(&mut self) -> Result<Expr, ()> {
         // To eliminate the left recursion we need to "inline" the last 2 rules of dereferencable
         // This works by passing the parsed callable variable into parse_dereferencable
         // so that it "knows" to stop the left-recursion there
@@ -299,14 +302,14 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self, prec: Precedence) -> Result<Expr<'static>, ()> {
+    fn parse_expression(&mut self, prec: Precedence) -> Result<Expr, ()> {
         // expr_without_variable TODO
         alt!(self.parse_unary_expression(prec));
         println!("err parse_expr");
         Err(())
     }
 
-    fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Expr<'static>, ()> {
+    fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Expr, ()> {
         match self.parse_expression(prec) {
             Err(()) => return Ok(Expr(Expr_::None, Span::new())),
             x => x,
@@ -314,7 +317,7 @@ impl Parser {
     }
 
     /// parsing all expressions after the precedence applying ("callback")
-    fn parse_other_expression(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_other_expression(&mut self) -> Result<Expr, ()> {
         // '(' expr ')'
         if_lookahead!(self, Token::ParenthesesOpen, _token, {
             let expr_ret =  self.parse_expression(Precedence::None);
@@ -385,7 +388,7 @@ impl Parser {
         Err(())
     }
 
-    fn parse_namespace_name(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_namespace_name(&mut self) -> Result<Expr, ()> {
         // T_STRING ~ (NS_SEPARATOR ~ T_STRING)+
         let mut fragments = vec![];
         while !self.tokens.is_empty() {
@@ -407,9 +410,9 @@ impl Parser {
                     1 => Path::Identifier(fragments.pop().map(|x| x.0.into()).unwrap()),
                     _ => {
                         let identifier = fragments.pop().unwrap();
-                        Path::NsIdentifier(fragments.into_iter().enumerate().fold(String::new(), |acc, (i, el)| {
-                            acc + if i > 0 { "\\" } else { "" } + &el.0
-                        }).into(), identifier.0.into())
+                        Path::NsIdentifier(self.interner.intern(&fragments.into_iter().enumerate().fold(String::new(), |acc, (i, el)| {
+                            acc + if i > 0 { "\\" } else { "" } + el.0.borrow()
+                        })), identifier.0.into())
                     }
                 }), span));
             });
@@ -418,7 +421,7 @@ impl Parser {
         Err(())
     }
 
-    fn parse_name(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_name(&mut self) -> Result<Expr, ()> {
         //TODO: |   T_NAMESPACE T_NS_SEPARATOR namespace_name   { $$ = $3; $$->attr = ZEND_NAME_RELATIVE; }
         // try to consume the \\ if one exists so that a namespace_name will be matched
         // then the path will be a fully quallified (FQ)
@@ -430,12 +433,12 @@ impl Parser {
         }
     }
 
-    fn parse_constant(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_constant(&mut self) -> Result<Expr, ()> {
         //TODO
         self.parse_name()
     }
 
-    fn parse_encaps_list(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_encaps_list(&mut self) -> Result<Expr, ()> {
         let mut str_ = String::new();
         let mut start_pos = None;
         let mut end_pos = 0;
@@ -450,29 +453,29 @@ impl Parser {
                         if end_pos < token.1.end {
                             end_pos = token.1.end;
                         }
-                        str_.push_str(&str_part);
+                        str_.push_str(str_part.borrow());
                     },
                     _ => unreachable!(),
                 }
             }, { break });
         }
         if str_.len() > 0 {
-            return Ok(Expr(Expr_::String(str_.into()), Span { start: start_pos.unwrap(), end: end_pos, ..Span::new() }));
+            return Ok(Expr(Expr_::String(self.interner.intern(&str_)), Span { start: start_pos.unwrap(), end: end_pos, ..Span::new() }));
         }
         Err(())
     }
 
-    fn parse_dereferencable_scalar(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_dereferencable_scalar(&mut self) -> Result<Expr, ()> {
         if_lookahead!(self, Token::ConstantEncapsedString(_), token, {
             match token.0 {
-                Token::ConstantEncapsedString(str_) => return Ok(Expr(Expr_::String(str_.into()), token.1)),
+                Token::ConstantEncapsedString(str_) => return Ok(Expr(Expr_::String(str_), token.1)),
                 _ => unreachable!(),
             }
         });
         Err(())
     }
 
-    fn parse_scalar(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_scalar(&mut self) -> Result<Expr, ()> {
         match self.tokens.pop() {
             Some(x) => Ok(Expr(match x.0 {
                 // LNUMBER
@@ -504,19 +507,19 @@ impl Parser {
         }
     }
 
-    fn parse_statement(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_statement(&mut self) -> Result<Expr, ()> {
         // expr ';'
         let expr = try!(self.parse_unary_expression(Precedence::None));
         if_lookahead!(self, Token::SemiColon, _token, { return Ok(expr) });
         Err(())
     }
 
-    fn parse_top_statement(&mut self) -> Result<Expr<'static>, ()> {
+    fn parse_top_statement(&mut self) -> Result<Expr, ()> {
         // TODO: incomplete
         return self.parse_statement();
     }
 
-    fn parse_tokens(toks: Vec<TokenSpan>) -> Vec<Expr<'static>> {
+    fn parse_tokens(interner: Interner, toks: Vec<TokenSpan>) -> Vec<Expr> {
         // strip whitespace and unnecessary tokens
         let mut tokens: Vec<TokenSpan> = vec![];
         for tok in toks.into_iter().rev() {
@@ -530,6 +533,7 @@ impl Parser {
         println!("{:?}", tokens);
         let mut p = Parser {
             tokens: tokens,
+            interner: interner,
         };
         // error handling..
         let mut exprs = vec![];
@@ -540,13 +544,16 @@ impl Parser {
         exprs
     }
 
-    pub fn parse_str(s: &str) -> Vec<Expr<'static>> {
-        let mut tokenizer = Tokenizer::new(s);
-        let mut tokens = vec![];
-        // TODO: error & state handling
-        while let Ok(tok) = tokenizer.next_token() {
-            tokens.push(tok);
-        }
-        Parser::parse_tokens(tokens)
+    pub fn parse_str(s: &str) -> Vec<Expr> {
+        let (interner, tokens) = {
+            let mut tokenizer = Tokenizer::new(s);
+            let mut tokens = vec![];
+            // TODO: error & state handling
+            while let Ok(tok) = tokenizer.next_token() {
+                tokens.push(tok);
+            }
+            (tokenizer.into_interner(), tokens)
+        };
+        Parser::parse_tokens(interner, tokens)
     }
 }

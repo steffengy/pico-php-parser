@@ -179,15 +179,15 @@ pub enum Token {
     LogicalXor,
     Sl,
     Sr,
-    Variable(String),
+    Variable(RcStr),
     Int(i64),
     Double(f64),
-    Comment(String),
+    Comment(RcStr),
     /// likely an arbitrary identifier
-    String(String),
+    String(RcStr),
     /// like 'test', constant encapsed string
-    ConstantEncapsedString(String),
-    InlineHtml(String),
+    ConstantEncapsedString(RcStr),
+    InlineHtml(RcStr),
     // magic-tokens
     MagicClass,
     MagicTrait,

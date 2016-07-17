@@ -1,6 +1,9 @@
 #![feature(test)]
 #![recursion_limit="420"]
 extern crate test;
+extern crate fnv;
+
+mod interner;
 
 mod tokens;
 
@@ -11,9 +14,5 @@ mod tokenizer;
 mod parser;
 pub use parser::*;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-    }
-}
+#[cfg(tests)]
+mod tests;

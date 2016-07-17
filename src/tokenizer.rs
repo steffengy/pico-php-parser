@@ -3,6 +3,7 @@
 use std::str::{self, FromStr};
 use std::mem;
 
+use interner::Interner;
 pub use tokens::{Span, Token, TokenSpan, SyntaxError};
 
 #[inline]
@@ -20,13 +21,13 @@ enum State {
     EmitQueue,
 }
 
-#[derive(Debug)]
 pub struct Tokenizer<'a> {
     code: &'a str,
     /// whether to support short tags, equal to CG(short_tags)
     short_tags: bool,
     state: TokenizerState,
     queue: Vec<TokenSpan>,
+    interner: Interner,
 }
 
 #[derive(Debug, Clone)]
@@ -133,13 +134,19 @@ impl<'a> Tokenizer<'a> {
             },
             short_tags: true,
             queue: vec![],
+            interner: Interner::new(),
         }
+    }
+
+    #[inline]
+    pub fn into_interner(self) -> Interner {
+        self.interner
     }
 
     /// advances by n-positions where a position is a char-index
     /// this returns a substring of the skipped part (old[..n])
     #[inline]
-    fn advance(&mut self, n: usize) -> &str {
+    fn advance(&mut self, n: usize) -> &'a str {
         let end_byte_pos = match self.input().char_indices().nth(n) {
             Some((byte_pos, _)) => byte_pos,
             None => self.input().len(),
@@ -205,7 +212,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     // re2c stuff (mostly prefixed with _)
-    fn _label(&mut self) -> Option<(&str, Span)> {
+    fn _label(&mut self) -> Option<(&'a str, Span)> {
         if self.input().is_empty() {
             return None
         }
@@ -341,7 +348,7 @@ impl<'a> Tokenizer<'a> {
         }
         let bak_pos = self.input_pos();
         self.advance(1);
-        match self._label().map(|(x, span)| (x.to_owned(), span)) {
+        match self._label().map(|(x, span)| (self.interner.intern(x), span)) {
             Some((name, mut span)) => {
                 span.start = bak_pos as u32;
                 Ok(TokenSpan(Token::Variable(name), span))
@@ -401,7 +408,7 @@ impl<'a> Tokenizer<'a> {
         let (start_pos, end_pos) = (start_tok.1.start, end_tok.1.end);
         self.queue.push(end_tok);
         if !str_.is_empty() {
-            self.queue.push(TokenSpan(Token::ConstantEncapsedString(str_), mk_span(start_pos as usize, end_pos as usize)));
+            self.queue.push(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), mk_span(start_pos as usize, end_pos as usize)));
         }
         if parts.len() > 0 {
             self.queue.extend(parts.into_iter().rev());
@@ -453,7 +460,7 @@ impl<'a> Tokenizer<'a> {
             }
         }
         let span = mk_span(bak_state.src_pos, self.input_pos());
-        Ok(TokenSpan(Token::ConstantEncapsedString(str_), span))
+        Ok(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), span))
     }
 
     fn str_variable(&mut self, str_: &mut String, parts: &mut Vec<TokenSpan>) {
@@ -462,7 +469,7 @@ impl<'a> Tokenizer<'a> {
             panic!("unimplemented: T_DOLLAR_OPEN_CURLY_BRACES: ${ ... } syntax not supported yet");
         }
         // match variable
-        if let Some((label, span)) = self._label().map(|(x, span)| (x.to_owned(), span)) {
+        if let Some((label, span)) = self._label().map(|(x, span)| (self.interner.intern(x), span)) {
             let mut tmp_parts = vec![];
             // match var_offset
             if self.input().starts_with('[') {
@@ -473,7 +480,7 @@ impl<'a> Tokenizer<'a> {
             else if self.input().starts_with("->") {
                 let bak_pos = self.input_pos();
                 self.advance(2);
-                if let Some((property, span)) = self._label().map(|(x, span)| (x.to_owned(), span)) {
+                if let Some((property, span)) = self._label().map(|(x, span)| (self.interner.intern(x), span)) {
                     tmp_parts.push(TokenSpan(Token::ObjectOp, mk_span(bak_pos, bak_pos+1)));
                     tmp_parts.push(TokenSpan(Token::String(property), mk_span(span.start as usize, span.end as usize)));
                 } else {
@@ -482,7 +489,8 @@ impl<'a> Tokenizer<'a> {
             }
             // and match the single variable, prepend it
             if !str_.is_empty() {
-                parts.push(TokenSpan(Token::ConstantEncapsedString(mem::replace(str_, String::new())), mk_span(span.start as usize -str_.len(), span.start as usize)));
+                let old_str_fragment = self.interner.intern(&mem::replace(str_, String::new()));
+                parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(span.start as usize -str_.len(), span.start as usize)));
             }
             parts.push(TokenSpan(Token::Variable(label), mk_span(span.start as usize -1, span.end as usize)));
             parts.extend(tmp_parts);
@@ -720,7 +728,7 @@ impl<'a> Tokenizer<'a> {
         let span = mk_span(bak_state_str.src_pos, self.input_pos() - 1);
         if is_now_doc {
             assert!(parts.is_empty());
-            return Ok(TokenSpan(Token::ConstantEncapsedString(str_), mk_span(bak_state_str.src_pos, self.input_pos())));
+            return Ok(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), mk_span(bak_state_str.src_pos, self.input_pos())));
         }
         let current_pos = self.input_pos();
         Ok(self.return_tokens_from_parts(
@@ -772,7 +780,7 @@ impl<'a> Tokenizer<'a> {
             // for this specific case `.doc_comment` merely acts as a flag
             span.doc_comment = Some("".to_owned());
         }
-        return Ok(TokenSpan(Token::Comment(comment), span));
+        return Ok(TokenSpan(Token::Comment(self.interner.intern(&comment)), span));
     }
 
     /// Try to parse a token depending on the current state
@@ -840,7 +848,7 @@ impl<'a> Tokenizer<'a> {
         if end_pos != 0 {
             let span = mk_span(self.input_pos(), end_pos);
             let str_ = self.advance(end_pos);
-            return Ok(TokenSpan(Token::InlineHtml(str_.to_owned()), span));
+            return Ok(TokenSpan(Token::InlineHtml(self.interner.intern(str_)), span));
         }
         Err(SyntaxError::None)
     }
@@ -1028,7 +1036,7 @@ impl<'a> Tokenizer<'a> {
         ret_token!(match_token!(self, "__DIR__", MagicDir));
         ret_token!(match_token!(self, "__NAMESPACE__", MagicNamespace));
         match self._label() {
-            Some((label, span)) => return Ok(TokenSpan(Token::String(label.to_owned()), span)),
+            Some((label, span)) => return Ok(TokenSpan(Token::String(self.interner.intern(label)), span)),
             None => (),
         };
         ret_token!(self._token()); //{TOKENS}, keep this last
@@ -1039,7 +1047,7 @@ impl<'a> Tokenizer<'a> {
     fn looking_for_property_token(&mut self) -> Result<TokenSpan, SyntaxError> {
         self.whitespace();
         ret_token!(match_token!(self, "->", ObjectOp));
-        match self._label().map(|(x, span)| (x.to_owned(), span)) {
+        match self._label().map(|(x, span)| (self.interner.intern(x), span)) {
             None => (),
             Some((x, span)) => {
                 state_helper!(pop, self);
@@ -1079,10 +1087,10 @@ mod tests {
     #[test]
     fn simple_object_operator() {
         let mut tokenizer = Tokenizer::new("<?php  ->test ?>");
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::ObjectOp), Ok(Token::String("test".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::ObjectOp), Ok(Token::String("test".into()))]);
         let mut tokenizer = Tokenizer::new("<?php  ->test->gest2 ?>");
-        assert_eq!(get_n_tokens(&mut tokenizer, 5), vec![Ok(Token::OpenTag), Ok(Token::ObjectOp), Ok(Token::String("test".to_owned())),
-            Ok(Token::ObjectOp), Ok(Token::String("gest2".to_owned()))
+        assert_eq!(get_n_tokens(&mut tokenizer, 5), vec![Ok(Token::OpenTag), Ok(Token::ObjectOp), Ok(Token::String("test".into())),
+            Ok(Token::ObjectOp), Ok(Token::String("gest2".into()))
         ]);
     }
 
@@ -1109,7 +1117,7 @@ mod tests {
     #[test]
     fn scripting_initial_text() {
         let mut tokenizer = Tokenizer::new("a?>b<?php?>");
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::InlineHtml("a?>b".to_owned())), Ok(Token::OpenTag), Ok(Token::CloseTag)]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::InlineHtml("a?>b".into())), Ok(Token::OpenTag), Ok(Token::CloseTag)]);
     }
 
     #[test]
@@ -1144,75 +1152,75 @@ mod tests {
     fn dq_string() {
         let mut tokenizer = Tokenizer::new("<?php \"testhallo\\nwelt\"");
         assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote),
-            Ok(Token::ConstantEncapsedString("testhallo\nwelt".to_owned())), Ok(Token::DoubleQuote)]
+            Ok(Token::ConstantEncapsedString("testhallo\nwelt".into())), Ok(Token::DoubleQuote)]
         );
         let mut tokenizer = Tokenizer::new(r#"<?php "testhallo\"welt\"""#);
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("testhallo\"welt\"".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("testhallo\"welt\"".into()))]);
         // check if we can handle UTF-8 without crashing
         let mut tokenizer = Tokenizer::new("<?php \"转\\t注\\t字\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("转\t注\t字".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("转\t注\t字".into()))]);
     }
 
     #[test]
     fn sq_string() {
         let mut tokenizer = Tokenizer::new("<?php 'testhallo\\nwelt \\'g\\''");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("testhallo\\nwelt 'g'".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("testhallo\\nwelt 'g'".into()))]);
     }
 
     #[test]
     fn dq_string_var() {
         let mut tokenizer = Tokenizer::new("<?php \"ab $world cd\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("ab ".to_owned())),
-                Ok(Token::Variable("world".to_owned())), Ok(Token::ConstantEncapsedString(" cd".to_owned())), Ok(Token::DoubleQuote)
+        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("ab ".into())),
+                Ok(Token::Variable("world".into())), Ok(Token::ConstantEncapsedString(" cd".into())), Ok(Token::DoubleQuote)
         ]);
         let mut tokenizer = Tokenizer::new("<?php \"$world->ab\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".to_owned())), Ok(Token::ObjectOp),
-            Ok(Token::String("ab".to_owned())), Ok(Token::DoubleQuote),
+        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".into())), Ok(Token::ObjectOp),
+            Ok(Token::String("ab".into())), Ok(Token::DoubleQuote),
         ]);
         let mut tokenizer = Tokenizer::new("<?php \"$world->ab->cd\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 7), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".to_owned())), Ok(Token::ObjectOp),
-            Ok(Token::String("ab".to_owned())), Ok(Token::ConstantEncapsedString("->cd".to_owned())), Ok(Token::DoubleQuote)
+        assert_eq!(get_n_tokens(&mut tokenizer, 7), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".into())), Ok(Token::ObjectOp),
+            Ok(Token::String("ab".into())), Ok(Token::ConstantEncapsedString("->cd".into())), Ok(Token::DoubleQuote)
         ]);
         let mut tokenizer = Tokenizer::new("<?php \"{$world->ab->cd}\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 9), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::CurlyBracesOpen), Ok(Token::Variable("world".to_owned())),
-            Ok(Token::ObjectOp), Ok(Token::String("ab".to_owned())), Ok(Token::ObjectOp), Ok(Token::String("cd".to_owned())), Ok(Token::CurlyBracesClose)
+        assert_eq!(get_n_tokens(&mut tokenizer, 9), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::CurlyBracesOpen), Ok(Token::Variable("world".into())),
+            Ok(Token::ObjectOp), Ok(Token::String("ab".into())), Ok(Token::ObjectOp), Ok(Token::String("cd".into())), Ok(Token::CurlyBracesClose)
         ]);
     }
 
     #[test]
     fn backquote() {
         let mut tokenizer = Tokenizer::new("<?php `ab $world cd`");
-        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::Backquote), Ok(Token::ConstantEncapsedString("ab ".to_owned())),
-                Ok(Token::Variable("world".to_owned())), Ok(Token::ConstantEncapsedString(" cd".to_owned())), Ok(Token::Backquote),
+        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::Backquote), Ok(Token::ConstantEncapsedString("ab ".into())),
+                Ok(Token::Variable("world".into())), Ok(Token::ConstantEncapsedString(" cd".into())), Ok(Token::Backquote),
         ]);
     }
 
     #[test]
     fn heredoc() {
         let mut tokenizer = Tokenizer::new("<?php <<<EOT\ntest\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("test".to_owned())), Ok(Token::HereDocEnd) ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("test".into())), Ok(Token::HereDocEnd) ]);
         let mut tokenizer = Tokenizer::new("<?php <<<\"EOT\"\nte\\tst\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("te\tst".to_owned())), Ok(Token::HereDocEnd) ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("te\tst".into())), Ok(Token::HereDocEnd) ]);
     }
 
     #[test]
     fn nowdoc() {
         let mut tokenizer = Tokenizer::new("<?php <<<'EOT'\nte\\tst\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("te\\tst".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("te\\tst".into()))]);
     }
 
     #[test]
     fn single_line_comment() {
         let mut tokenizer = Tokenizer::new("<?php //test");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
         let mut tokenizer = Tokenizer::new("<?php //test\n$a");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
     }
 
     #[test]
     fn block_comment() {
         let mut tokenizer = Tokenizer::new("<?php /* test\ntest2 */bb");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment(" test\ntest2 ".to_owned()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment(" test\ntest2 ".into()))]);
     }
 
     #[test]
@@ -1222,7 +1230,7 @@ mod tests {
         match tokenizer.next_token() {
             Ok(TokenSpan(Token::Comment(comment), span)) => {
                 assert_eq!(tokenizer.state.line_num, 4);
-                assert_eq!(comment, " test ");
+                assert_eq!(comment, " test ".into());
                 println!("{:?}", span);
                 assert_eq!(tokenizer.state.line_from_position(span.start as usize), 4 - 1); //0-based lines
             },
