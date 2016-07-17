@@ -1181,11 +1181,10 @@ mod tests {
 
     #[test]
     fn backquote() {
-        /*let mut tokenizer = Tokenizer::new("<?php `ab $world cd`");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag),
-            Ok(Token::StringLiteralComplex(StringType::Backquote, vec![Token::StringLiteral(StringType::None, "ab ".to_owned()),
-                Token::Variable("world".to_owned()), Token::StringLiteral(StringType::None, " cd".to_owned())])
-        )]);*/
+        let mut tokenizer = Tokenizer::new("<?php `ab $world cd`");
+        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::Backquote), Ok(Token::ConstantEncapsedString("ab ".to_owned())),
+                Ok(Token::Variable("world".to_owned())), Ok(Token::ConstantEncapsedString(" cd".to_owned())), Ok(Token::Backquote),
+        ]);
     }
 
     #[test]
