@@ -99,26 +99,25 @@ pub struct Expr(pub Expr_, pub Span);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
-    None,
     /// indicates the path to e.g. a namespace or is a simple identifier
     Path(Path),
     String(RcStr),
     Int(i64),
     Double(f64),
-    Array(Vec<(Expr, Expr)>),
+    Array(Vec<(Option<Expr>, Expr)>),
     Variable(RcStr),
     Reference(Box<Expr>),
     Use(Vec<UseClause>),
     Clone(Box<Expr>),
-    Exit(Box<Expr>),
+    Exit(Option<Box<Expr>>),
     Echo(Vec<Expr>),
     Isset(Vec<Expr>),
     Empty(Box<Expr>),
     Unset(Vec<Expr>),
-    Return(Box<Expr>),
+    Return(Option<Box<Expr>>),
     Throw(Box<Expr>),
-    Break(usize),
-    Continue(usize),
+    Break(Option<Box<Expr>>),
+    Continue(Option<Box<Expr>>),
     Block(Vec<Expr>),
 
     Include(IncludeTy, Box<Expr>),
@@ -139,7 +138,7 @@ pub enum Expr_ {
     AssignRef(Box<Expr>, Box<Expr>),
     List(Vec<(Expr, Expr)>),
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
-    If(Box<Expr>, Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     While(Box<Expr>, Box<Expr>),
     DoWhile(Box<Expr>, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3

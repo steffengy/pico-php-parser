@@ -1,14 +1,5 @@
 use parser::*;
 
-/*
-fn assert_comment(input: &str, is_end: bool) {
-    let mut parser = Parser::parse_str(input);
-    let mut parser = Rdp::new(StringInput::new(input));
-    //TODO assert!(parser.comment());
-    //TODO: assert_eq!(parser.end(), is_end);
-}
-*/
-
 fn process_expr(input: &str) -> Expr {
     let str_ = "<?php ".to_owned() + input + ";";
     let mut result = Parser::parse_str(&str_);
@@ -16,21 +7,9 @@ fn process_expr(input: &str) -> Expr {
     result.pop().unwrap()
 }
 
-macro_rules! eb {
-    (None, $e:expr) => {Box::new(enb!(None, $e))};
-    ($s:expr, $end:expr, $e:expr) => {Box::new(enb!($s, $end, $e))};
-}
-
-macro_rules! enb {
-    // 6 is the sizeof "<?php "
-    (None, $e:expr) => {Expr($e, Span::new())};
-    ($s:expr, $end:expr, $e:expr) => {Expr($e, Span { start:$s+6, end:$end+6, ..Span::new() })};
-}
-
-macro_rules! constant {
-    (true) => {Expr_::Path(Path::Identifier("true".into()))};
-    (false) => {Expr_::Path(Path::Identifier("false".into()))};
-    (null) => {Expr_::Path(Path::Identifier("null".into()))};
+fn parse_expr_comment() {
+    assert_eq!(process_expr("1/*test*/+/*test*/2"), enb!(1,2, Expr_::BinaryOp(Op::Add, eb!(0, 1, Expr_::Int(1)), eb!(2, 3, Expr_::Int(2)))));
+    //TODO: doc comment tests
 }
 
 #[test]
@@ -44,10 +23,10 @@ fn parse_expr_op() {
             eb!(8, 10, Expr_::BinaryOp(Op::Pow, eb!(6, 8, Expr_::Variable("c".into())), eb!(10, 12, Expr_::Variable("d".into()))))
         ))
     )));
-    /*assert_eq!(process_expr(r#"$g["a"]-$g["b"]/3"#), Expr::BinaryOp(
+    /*assert_eq!(process_expr(r#"$g["a"]-$g["b"]/3"#), Expr_::BinaryOp(
         Op::Sub,
-        Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("g".into())), vec![Expr::String("a".into())])),
-        Box::new(Expr::BinaryOp(Op::Div, Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("g".into())), vec![Expr::String("b".into())])), Box::new(Expr::Int(3))))
+        Box::new(Expr_::ArrayIdx(Box::new(Expr_::Variable("g".into())), vec![Expr_::String("a".into())])),
+        Box::new(Expr_::BinaryOp(Op::Div, Box::new(Expr_::ArrayIdx(Box::new(Expr_::Variable("g".into())), vec![Expr_::String("b".into())])), Box::new(Expr_::Int(3))))
     ));*/
 }
 
@@ -79,8 +58,8 @@ fn parse_expr_string() {
 #[test]
 fn parse_expr_char_string() {
     assert_eq!(process_expr(r#"'\ntest\142'"#), enb!(0, 12, Expr_::String("\\ntest\\142".into())));
-    //assert_eq!(process_expr(r#"'a\'b\'c'"#), Expr::String("a'b'c".into()));
-    //assert_eq!(process_expr(r#"'d\'e\\\'f\\\'\'g'"#), Expr::String("d\'e\\\'f\\\'\'g".into()));
+    //assert_eq!(process_expr(r#"'a\'b\'c'"#), Expr_::String("a'b'c".into()));
+    //assert_eq!(process_expr(r#"'d\'e\\\'f\\\'\'g'"#), Expr_::String("d\'e\\\'f\\\'\'g".into()));
 }
 
 #[test]
@@ -200,7 +179,7 @@ fn parse_expr_static_const() {
 #[test]
 fn parse_expr_static_property() {
     assert_eq!(process_expr(r#"Obj::$test"#), enb!(3,5, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,10, Expr_::Variable("test".into())) ])));
-    //assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticMember(Box::new(Expr::Path(Path::Identifier("Obj".into()))), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
+    //assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr_::StaticMember(Box::new(Expr_::Path(Path::Identifier("Obj".into()))), vec![Expr_::Variable("a".into()), Expr_::Variable("b".into())]));
 }
 
 #[test]
@@ -225,58 +204,57 @@ fn parse_expr_clone() {
     assert_eq!(process_expr("clone $test"), enb!(0,5, Expr_::Clone(eb!(6,11, Expr_::Variable("test".into())))));
 }
 
-/*
-
 #[test]
 fn parse_expr_array_append() {
     // for now we support append-expressions like that, TODO: figure out error reporting (AST_Node -> Position in source file)
-    assert_eq!(process_expr(r#"$test[]=1"#), Expr::Assign(Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("test".into())), vec![Expr::None])), Box::new(Expr::Int(1))));
-}
-
-#[test]
-fn parse_expr_comment() {
-    assert_comment("//test", true);
-    assert_comment("/*test*/", true);
-    assert_comment("//test\ns", false);
-    assert_comment("/*test*/s", false);
-}
-
-#[test]
-fn parse_expr_closure() {
-    assert_eq!(process_expr("function () { c(); }"), Expr::Function(FunctionDecl {
-        params: vec![],
-        body: vec![Expr::Call(Box::new(Expr::Path(Path::Identifier("c".into()))), vec![])], usev: vec![], ret_ref: false,
-    }));
-    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr::ObjMember(Box::new(Expr::New(Box::new(Expr::Path(Path::Identifier("Factory".into()))), vec![])),
-        vec![Expr::Path(Path::Identifier("test".into()))])
-    );
-}
-
-#[test]
-fn parse_expr_array() {
-    assert_eq!(process_expr("[]"), Expr::Array(vec![]));
-    assert_eq!(process_expr("[1,]"), Expr::Array(vec![(Expr::None, Expr::Int(1)) ]));
-    assert_eq!(process_expr("array()"), Expr::Array(vec![]));
-    assert_eq!(process_expr("[1, 2]"), Expr::Array(vec![(Expr::None, Expr::Int(1)), (Expr::None, Expr::Int(2))]));
-    assert_eq!(process_expr("[1, [2, 3], 3]"), Expr::Array(vec![
-        (Expr::None, Expr::Int(1)), (Expr::None, Expr::Array(vec![
-            (Expr::None, Expr::Int(2)), (Expr::None, Expr::Int(3))
-        ])
-    ), (Expr::None, Expr::Int(3))]));
+    assert_eq!(process_expr(r#"$test[]=1"#), enb!(7,8, Expr_::Assign(eb!(None, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![])),
+        eb!(8,9, Expr_::Int(1))
+    )));
 }
 
 #[test]
 fn parse_expr_assign() {
-    assert_eq!(process_expr("($b=4)"), Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(4))));
-    let negate_assign_result = Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(1)))));
-    assert_eq!(process_expr("!($b=1)"), negate_assign_result);
-    assert_eq!(process_expr("!$b=1"), negate_assign_result);
+    assert_eq!(process_expr("($b=4)"), enb!(3,4, Expr_::Assign(eb!(1,3, Expr_::Variable("b".into())), eb!(4,5, Expr_::Int(4)))));
+    let negate_assign_result = |c: u32| enb!(0,1, Expr_::UnaryOp(UnaryOp::Not, eb!(3+c,4+c, Expr_::Assign(eb!(1+c,3+c, Expr_::Variable("b".into())),
+        eb!(4+c, 5+c, Expr_::Int(1)))))
+    );
+    assert_eq!(process_expr("!($b=1)"), negate_assign_result(1));
+    assert_eq!(process_expr("!$b=1"), negate_assign_result(0));
+}
+
+#[test]
+fn parse_expr_array() {
+    assert_eq!(process_expr("[]"), enb!(0,2, Expr_::Array(vec![])));
+    assert_eq!(process_expr("[1,]"), enb!(0,4, Expr_::Array(vec![ (None, enb!(1,2, Expr_::Int(1))) ])));
+    assert_eq!(process_expr("[1, 2]"), enb!(0,6, Expr_::Array(vec![
+        (None, enb!(1,2, Expr_::Int(1))), (None, enb!(4,5, Expr_::Int(2)))
+    ])));
+    assert_eq!(process_expr("[1, [2, 3], 3]"), enb!(0,14, Expr_::Array(vec![
+        (None, enb!(1,2, Expr_::Int(1))), (None, enb!(4,10, Expr_::Array(vec![
+            (None, enb!(5,6, Expr_::Int(2))), (None, enb!(8,9, Expr_::Int(3)))
+        ]))),
+        (None, enb!(12,13, Expr_::Int(3)))
+    ])));
+    assert_eq!(process_expr("array()"), enb!(0,7, Expr_::Array(vec![])));
+}
+
+/*
+
+#[test]
+fn parse_expr_closure() {
+    assert_eq!(process_expr("function () { c(); }"), Expr_::Function(FunctionDecl {
+        params: vec![],
+        body: vec![Expr_::Call(Box::new(Expr_::Path(Path::Identifier("c".into()))), vec![])], usev: vec![], ret_ref: false,
+    }));
+    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr_::ObjMember(Box::new(Expr_::New(Box::new(Expr_::Path(Path::Identifier("Factory".into()))), vec![])),
+        vec![Expr_::Path(Path::Identifier("test".into()))])
+    );
 }
 
 #[test]
 fn parse_expr_priority_parents_call() {
-    assert_eq!(process_expr("(new $obj)->method()"), Expr::Call(Box::new(Expr::ObjMember(Box::new(Expr::New(Box::new(Expr::Variable("obj".into())), vec![])),
-        vec![Expr::Path(Path::Identifier("method".into()))]
+    assert_eq!(process_expr("(new $obj)->method()"), Expr_::Call(Box::new(Expr_::ObjMember(Box::new(Expr_::New(Box::new(Expr_::Variable("obj".into())), vec![])),
+        vec![Expr_::Path(Path::Identifier("method".into()))]
     )), vec![]));
 }
 */

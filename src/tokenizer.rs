@@ -964,10 +964,10 @@ impl<'a> Tokenizer<'a> {
             self.state.src_pos = old_pos;
         }
         ret_token!(match_token!(self, "eval",  Eval));
-        ret_token!(match_token!(self, "include",  Include));
         ret_token!(match_token!(self, "include_once",  IncludeOnce));
-        ret_token!(match_token!(self, "require",  Require));
+        ret_token!(match_token!(self, "include",  Include));
         ret_token!(match_token!(self, "require_once",  RequireOnce));
+        ret_token!(match_token!(self, "require",  Require));
         ret_token!(match_token!(self, "namespace",  Namespace));
         ret_token!(match_token!(self, "use",  Use));
         ret_token!(match_token!(self, "insteadof",  Insteadof));

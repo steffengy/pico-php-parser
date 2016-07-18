@@ -120,6 +120,13 @@ macro_rules! alt {
     })
 }
 
+macro_rules! alt_not {
+    ($e:expr, $next:expr) => (match $e {
+        None => $next,
+        Some(x) => Some(x),
+    })
+}
+
 // check if the next token is X, if return and execute block
 macro_rules! if_lookahead {
     ($self_:expr, $a:pat, $v:ident, $block:expr, $else_block:expr) => {
@@ -218,7 +225,8 @@ impl Parser {
             Associativity::Left => precedence,
         };
         let right = try!(self.parse_expression(precedence));
-        let tmp = Box::new(mem::replace(left, Expr(Expr_::None, Span::new())));
+        // TODO: using Break(0) is a hack here, get rid of the mem::replace somehow
+        let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
         *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), binary_token.1);
         Ok(true)
     }
@@ -237,17 +245,23 @@ impl Parser {
         })
     }
 
+    #[inline]
+    fn parse_expression_list(&mut self) -> Result<Vec<Expr>, ()> {
+        let mut args = vec![];
+        loop {
+            args.push(try!(self.parse_expression(Precedence::None)));
+            if_lookahead!(self, Token::Comma, _tok, {}, break);
+        }
+        Ok(args)
+    }
+
     fn parse_argument_list(&mut self) -> Result<Vec<Expr>, ()> {
         if_lookahead!(self, Token::ParenthesesOpen, _token, {
             if_lookahead!(self, Token::ParenthesesClose, _token, {
                 return Ok(vec![]);
             });
             // parse arguments (non_empty_argument_list)
-            let mut args = vec![];
-            loop {
-                args.push(try!(self.parse_expression(Precedence::None)));
-                if_lookahead!(self, Token::Comma, _tok, {}, break);
-            }
+            let args = try!(self.parse_expression_list());
 
             if_lookahead!(self, Token::ParenthesesClose, _token, {
                 return Ok(args);
@@ -284,13 +298,19 @@ impl Parser {
         loop {
             if_lookahead!(self, Token::SquareBracketOpen, _tok, match self.parse_opt_expression(Precedence::None) {
                 Err(x) => return Err(x),
-                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, if let Some(expr) = expr {
-                    if let Expr(Expr_::ArrayIdx(_, ref mut idxs), _) = var_expr {
-                        idxs.push(expr);
-                    } else {
-                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), Span::new());
+                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, match expr {
+                    Some(expr) => {
+                        if let Expr(Expr_::ArrayIdx(_, ref mut idxs), _) = var_expr {
+                            idxs.push(expr);
+                        } else {
+                            var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), Span::new());
+                        }
+                        continue
+                    },
+                    None => {
+                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![]), Span::new());
+                        continue;
                     }
-                    continue
                 }),
             });
             // attempt to inline parse_function_call, for "callable_expr argument_list"
@@ -451,6 +471,14 @@ impl Parser {
         if_lookahead!(self, Token::Clone, token, {
             return Ok(Expr(Expr_::Clone(Box::new(try!(self.parse_expression(Precedence::None)))), token.1));
         });
+        if_lookahead!(self, Token::Exit, token, {
+            let expr = if_lookahead!(self, Token::ParenthesesOpen, _tok, {
+                let ret = Some(try!(self.parse_expression(Precedence::None)));
+                if_lookahead!(self, Token::ParenthesesClose, _tok, {}, { return Err(()); });
+                ret
+            }, None);
+            return Ok(Expr(Expr_::Exit(expr.map(|x| Box::new(x))), token.1));
+        });
         // internal_functions_in_yacc / casts
         let ret = match self.next_token() {
             Some(&TokenSpan(ref x, ref span)) => match *x {
@@ -554,7 +582,6 @@ impl Parser {
 
                     return match self.parse_expression(Precedence::None) {
                         Ok(expr) => {
-                            let span = Span { start: span.start, end: expr.1.end, ..Span::new() };
                             let expr = match (assign_type, by_ref) {
                                 (Op::Eq, false) => Expr_::Assign(Box::new(var), Box::new(expr)),
                                 (Op::Eq, true) => Expr_::AssignRef(Box::new(var), Box::new(expr)),
@@ -682,6 +709,18 @@ impl Parser {
     }
 
     fn parse_dereferencable_scalar(&mut self) -> Result<Expr, ()> {
+        if_lookahead!(self, Token::Array, token, {
+            if_lookahead!(self, Token::ParenthesesOpen, _token, {
+                let pairs = try!(self.parse_array_pair_list());
+                let end_pos = if_lookahead!(self, Token::ParenthesesClose, token, token.1.end, { return Err(()); });
+                return Ok(Expr(Expr_::Array(pairs), Span { start: token.1.start, end: end_pos, ..Span::new() }));
+            });
+        });
+        if_lookahead!(self, Token::SquareBracketOpen, token, {
+            let pairs = try!(self.parse_array_pair_list());
+            let end_pos = if_lookahead!(self, Token::SquareBracketClose, token, token.1.end, { return Err(()); });
+            return Ok(Expr(Expr_::Array(pairs), Span { start: token.1.start, end: end_pos, ..Span::new() }));
+        });
         if_lookahead!(self, Token::ConstantEncapsedString(_), token, {
             match token.0 {
                 Token::ConstantEncapsedString(str_) => return Ok(Expr(Expr_::String(str_), token.1)),
@@ -725,11 +764,44 @@ impl Parser {
         }
     }
 
+    fn parse_array_pair_list(&mut self) -> Result<Vec<(Option<Expr>, Expr)>, ()> {
+        // parse array pairs as long as possible
+        let mut pairs = vec![];
+        loop {
+            match self.parse_expression(Precedence::None) {
+                Err(x) => break,
+                Ok(ex) => pairs.push((None, ex)),
+            }
+            if_lookahead!(self, Token::Comma, _token, {}, break);
+        }
+        Ok(pairs)
+    }
+
     fn parse_statement(&mut self) -> Result<Expr, ()> {
+        let expr = match self.next_token().map(|x| x.clone()) {
+            Some(TokenSpan(token, span)) => {
+                self.advance(1);
+                let ret = match token {
+                    Token::Echo => Some(Expr(Expr_::Echo(try!(self.parse_expression_list())), span)),
+                    Token::Return => Some(Expr(Expr_::Return(try!(self.parse_opt_expression(Precedence::None)).map(|x| Box::new(x))), span)),
+                    Token::Continue => Some(Expr(Expr_::Continue(try!(self.parse_opt_expression(Precedence::None)).map(|x| Box::new(x))), span)),
+                    Token::Break => Some(Expr(Expr_::Break(try!(self.parse_opt_expression(Precedence::None)).map(|x| Box::new(x))), span)),
+                    Token::Throw => Some(Expr(Expr_::Throw(Box::new(try!(self.parse_expression(Precedence::None)))), span)),
+                    Token::InlineHtml(str_) => Some(Expr(Expr_::Echo(vec![Expr(Expr_::String(str_), span)]), Span::new())),
+                    _ => None,
+                };
+                if let None = ret {
+                    self.advance(-1);
+                }
+                ret
+            },
+            _ => return Err(()),
+        };
         // expr ';'
-        let expr = try!(self.parse_expression(Precedence::None));
+        let expr = try!(alt_not!(expr, Some(try!(self.parse_expression(Precedence::None)))).ok_or(()));
+        // check if the statement is properly terminated
         if_lookahead!(self, Token::SemiColon, _token, { return Ok(expr) });
-        Err(())
+        Ok(expr)
     }
 
     fn parse_top_statement(&mut self) -> Result<Expr, ()> {
