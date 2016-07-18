@@ -47,19 +47,21 @@ enum Associativity {
 
 #[derive(Copy, Clone)]
 enum Precedence {
-    None = 0,
-    LogicalIncOr1 = 1,
-    LogicalAnd = 2,
-    BitwiseIncOr = 3,
-    BitwiseExcOr = 4,
-    BitwiseAnd = 5,
-    Equality = 6,
-    Relational = 7,
-    Shift = 8,
-    Add = 9,
-    Mul = 10,
-    Pow = 11,
-    Unary = 12,
+    None,
+    /// e.g. ternary
+    Conditional,
+    LogicalIncOr1,
+    LogicalAnd,
+    BitwiseIncOr,
+    BitwiseExcOr,
+    BitwiseAnd,
+    Equality,
+    Relational,
+    Shift,
+    Add,
+    Mul,
+    Pow,
+    Unary,
 }
 
 macro_rules! from_usize {
@@ -76,11 +78,11 @@ macro_rules! from_usize {
         }
     };
 }
-from_usize!(None, LogicalIncOr1, LogicalAnd, BitwiseIncOr, BitwiseExcOr, BitwiseAnd, Equality, Relational, Shift, Add, Mul, Pow, Unary);
+from_usize!(None, Conditional, LogicalIncOr1, LogicalAnd, BitwiseIncOr, BitwiseExcOr, BitwiseAnd, Equality, Relational, Shift, Add, Mul, Pow, Unary);
 
 impl Token {
-    fn precedence(&self) -> Precedence {
-        match *self {
+    fn precedence(&self) -> Option<Precedence> {
+        Some(match *self {
             Token::BoolOr => Precedence::LogicalIncOr1,
             Token::BoolAnd => Precedence::LogicalAnd,
             Token::BwOr => Precedence::BitwiseIncOr,
@@ -92,8 +94,9 @@ impl Token {
             Token::Plus | Token::Minus | Token::Dot => Precedence::Add,
             Token::Mul | Token::Div | Token::Mod => Precedence::Mul,
             Token::Pow => Precedence::Pow,
-            _ => unimplemented!(),
-        }
+            Token::QuestionMark => Precedence::Conditional,
+            _ => return None,
+        })
     }
 
     fn associativity(&self) -> Associativity {
@@ -179,9 +182,9 @@ impl Parser {
 
     fn parse_binary_expression(&mut self, left: &mut Expr, precedence: Precedence) -> Result<bool, ()> {
         // lookahead to check for binary expression
-        let binary_op = {
+        let (new_precedence, binary_op) = {
             match self.next_token() {
-                Some(x) => match x.0 {
+                Some(x) => (x.0.precedence(), match x.0 {
                     Token::BoolOr => Some(Op::Or),
                     Token::BoolAnd => Some(Op::And),
                     Token::BwOr => Some(Op::BitwiseInclOr),
@@ -206,28 +209,46 @@ impl Parser {
                     Token::Mod => Some(Op::Mod),
                     Token::Pow => Some(Op::Pow),
                     _ => None,
-                }.map(|y| (x.0.precedence(), y)),
-                None => None,
+                }),
+                None => (None, None),
             }
         };
-        // no binary expression found, done
-        let (precedence, binary_op) = match binary_op {
-            Some(x) => if (precedence as usize) < (x.0 as usize) { x } else {
-                return Ok(false);
-            },
+        // no expression found, done
+        let new_precedence = match new_precedence {
             None => return Ok(false),
+            Some(x) => x,
         };
-        // consume te binary-operator token
-        let binary_token = self.next_token().unwrap().clone();
+        if (precedence as usize) >= (new_precedence as usize) {
+            // nothing of the required precedence we can handle
+            return Ok(false);
+        }
+
+        // consume the operator token
+        let op_token = self.next_token().unwrap().clone();
         self.advance(1);
-        let precedence = match binary_token.0.associativity() {
-            Associativity::Right => Precedence::from_usize((precedence as usize) - 1),
-            Associativity::Left => precedence,
+
+        // also try to match the ternary here.. since it's PHP and it's left associative therefor
+        if let Token::QuestionMark = op_token.0 {
+            let expr_ternary_if = try!(self.parse_opt_expression(new_precedence));
+            if_lookahead!(self, Token::Colon, _token, {}, { return Err(()); });
+            let expr_ternary_else = try!(self.parse_expression(new_precedence));
+            // TODO: using Break(0) is a hack here, get rid of the mem::replace somehow
+            let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
+            *left = Expr(Expr_::TernaryIf(tmp, expr_ternary_if.map(|x| Box::new(x)), Box::new(expr_ternary_else)), Span::new());
+            return Ok(true);
+        }
+
+        // handle regular binary-op expression
+        let binary_op = binary_op.unwrap();
+
+        let new_precedence = match op_token.0.associativity() {
+            Associativity::Right => Precedence::from_usize((new_precedence as usize) - 1),
+            Associativity::Left => new_precedence,
         };
-        let right = try!(self.parse_expression(precedence));
+        let right = try!(self.parse_expression(new_precedence));
         // TODO: using Break(0) is a hack here, get rid of the mem::replace somehow
         let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
-        *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), binary_token.1);
+        *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), op_token.1);
         Ok(true)
     }
 
@@ -413,15 +434,6 @@ impl Parser {
 
     fn parse_expression(&mut self, prec: Precedence) -> Result<Expr, ()> {
         let expr = try!(self.parse_unary_expression(prec));
-        if let Precedence::None = prec {
-            // ternary ?<optional_expr>:
-            if_lookahead!(self, Token::QuestionMark, _token, {
-                let expr_ternary_if = try!(self.parse_opt_expression(Precedence::None));
-                if_lookahead!(self, Token::Colon, _token, {}, { return Err(()); });
-                let expr_ternary_else = try!(self.parse_expression(Precedence::None));
-                return Ok(Expr(Expr_::TernaryIf(Box::new(expr), expr_ternary_if.map(|x| Box::new(x)), Box::new(expr_ternary_else)), Span::new()));
-            });
-        }
         Ok(expr)
     }
 
@@ -790,6 +802,22 @@ impl Parser {
             }
             let end_pos = if_lookahead!(self, Token::CurlyBracesClose, token, token.1.end, { return Err(()); });
             return Ok(Expr(Expr_::Block(block), mk_span(token.1.start as usize, end_pos as usize)));
+        });
+        // parse a for statement
+        if_lookahead!(self, Token::For, token, {
+            if_lookahead!(self, Token::ParenthesesOpen, open_for, {}, { return Err(()); });
+            let mut stmts = [None, None, None];
+            let mut i = 0;
+            while {
+                stmts[i] = try!(self.parse_opt_expression(Precedence::None)).map(|x| Box::new(x));
+                i += 1;
+                i < stmts.len()
+            } { if_lookahead!(self, Token::SemiColon, _tok, {}, { return Err(()); }) }
+            if_lookahead!(self, Token::ParenthesesClose, _tok, {}, { return Err(()); });
+            let block = try!(self.parse_statement());
+            let span = mk_span(token.1.start as usize, block.1.end as usize);
+            let (initial, cond, looper) = (mem::replace(&mut stmts[0], None) , mem::replace(&mut stmts[1], None), mem::replace(&mut stmts[2], None));
+            return Ok(Expr(Expr_::For(initial, cond, looper, Box::new(block)), span));
         });
         // parse an if/while-statement/do-while
         match self.next_token().map(|x| x.0.clone()) {

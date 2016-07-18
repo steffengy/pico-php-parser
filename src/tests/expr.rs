@@ -190,6 +190,14 @@ fn parse_expr_ternary() {
     assert_eq!(process_expr("!$test?true:false"), enb!(None, Expr_::TernaryIf(eb!(0,1, Expr_::UnaryOp(UnaryOp::Not,
         eb!(1,6, Expr_::Variable("test".into())))), Some(eb!(7,11, constant!(true))), eb!(12,17, constant!(false)))
     ));
+    assert_eq!(process_expr("true?'y':false?'n':'y'"), enb!(None, Expr_::TernaryIf(eb!(None, Expr_::TernaryIf(
+        eb!(0,4, constant!(true)),
+        Some(eb!(5,8, Expr_::String("y".into()))),
+        eb!(9,14, constant!(false)),
+    )),
+        Some(eb!(15,18, Expr_::String("n".into()))),
+        eb!(19,22, Expr_::String("y".into())),
+    )));
 }
 
 #[test]
@@ -238,6 +246,13 @@ fn parse_expr_array() {
     assert_eq!(process_expr("array()"), enb!(0,7, Expr_::Array(vec![])));
 }
 
+/*#[test]
+fn parse_expr_priority_parents_call() {
+    assert_eq!(process_expr("(new $obj)->method()"), enb!(None, Expr_::Call(eb!(10,12, Expr_::ObjMember(eb!(1,4, Expr_::New(eb!(5,9, Expr_::Variable("obj".into())), vec![])),
+        vec![ enb!(12,18, Expr_::Path(Path::Identifier("method".into()))) ]
+    )), vec![])));
+}
+*/
 /*
 
 #[test]
@@ -249,12 +264,5 @@ fn parse_expr_closure() {
     assert_eq!(process_expr(r#"(new Factory)->test"#), Expr_::ObjMember(Box::new(Expr_::New(Box::new(Expr_::Path(Path::Identifier("Factory".into()))), vec![])),
         vec![Expr_::Path(Path::Identifier("test".into()))])
     );
-}
-
-#[test]
-fn parse_expr_priority_parents_call() {
-    assert_eq!(process_expr("(new $obj)->method()"), Expr_::Call(Box::new(Expr_::ObjMember(Box::new(Expr_::New(Box::new(Expr_::Variable("obj".into())), vec![])),
-        vec![Expr_::Path(Path::Identifier("method".into()))]
-    )), vec![]));
 }
 */

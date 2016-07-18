@@ -118,7 +118,6 @@ pub enum Expr_ {
     Throw(Box<Expr>),
     Break(Option<Box<Expr>>),
     Continue(Option<Box<Expr>>),
-    Block(Vec<Expr>),
 
     Include(IncludeTy, Box<Expr>),
     ArrayIdx(Box<Expr>, Vec<Expr>),
@@ -132,6 +131,7 @@ pub enum Expr_ {
     Function(FunctionDecl),
 
     // statements
+    Block(Vec<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
     CompoundAssign(Box<Expr>, Op, Box<Expr>),
@@ -142,7 +142,7 @@ pub enum Expr_ {
     While(Box<Expr>, Box<Expr>),
     DoWhile(Box<Expr>, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
-    For(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
+    For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Box<Expr>),
     ForEach(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
     /// Try(TryBlock, CatchClauses, FinallyClause)
     Try(Box<Expr>, Vec<CatchClause>, Box<Expr>),
