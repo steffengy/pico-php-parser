@@ -95,22 +95,22 @@ fn parse_ns_identifier() {
 #[test]
 fn parse_expr_object_property() {
     //TODO: fix line numbers
-    assert_eq!(process_expr(r#"$obj->prop"#), enb!(None, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![enb!(6,10, Expr_::Path(Path::Identifier("prop".into()))) ])));
-    assert_eq!(process_expr(r#"$obj->a->b->c->d"#), enb!(None, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())),
+    assert_eq!(process_expr(r#"$obj->prop"#), enb!(4,6, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![enb!(6,10, Expr_::Path(Path::Identifier("prop".into()))) ])));
+    assert_eq!(process_expr(r#"$obj->a->b->c->d"#), enb!(4,6, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())),
         vec![enb!(6,7, Expr_::Path(Path::Identifier("a".into()))), enb!(9,10, Expr_::Path(Path::Identifier("b".into()))),
             enb!(12,13, Expr_::Path(Path::Identifier("c".into()))), enb!(15,16, Expr_::Path(Path::Identifier("d".into())))])
     ));
-    assert_eq!(process_expr(r#"$obj->$a->b"#), enb!(None, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
+    assert_eq!(process_expr(r#"$obj->$a->b"#), enb!(4,6, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
         enb!(6,8, Expr_::Variable("a".into())), enb!(10,11, Expr_::Path(Path::Identifier("b".into()))) ])
     ));
-    assert_eq!(process_expr("$obj->{$obj->b}->c"), enb!(None, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
-        enb!(None, Expr_::ObjMember(eb!(7,11, Expr_::Variable("obj".into())), vec![ enb!(13,14, Expr_::Path(Path::Identifier("b".into()))) ])),
+    assert_eq!(process_expr("$obj->{$obj->b}->c"), enb!(4,6, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
+        enb!(11,13, Expr_::ObjMember(eb!(7,11, Expr_::Variable("obj".into())), vec![ enb!(13,14, Expr_::Path(Path::Identifier("b".into()))) ])),
             enb!(17,18, Expr_::Path(Path::Identifier("c".into())))
         ]))
     );
-    assert_eq!(process_expr("$obj->{$a->{$b->c}->d}->e"), enb!(None, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
-        enb!(None, Expr_::ObjMember(eb!(7,9, Expr_::Variable("a".into())), vec![
-            enb!(None, Expr_::ObjMember(eb!(12,14, Expr_::Variable("b".into())), vec![ enb!(16,17, Expr_::Path(Path::Identifier("c".into()))) ])),
+    assert_eq!(process_expr("$obj->{$a->{$b->c}->d}->e"), enb!(4,6, Expr_::ObjMember(eb!(0,4, Expr_::Variable("obj".into())), vec![
+        enb!(9,11, Expr_::ObjMember(eb!(7,9, Expr_::Variable("a".into())), vec![
+            enb!(14,16, Expr_::ObjMember(eb!(12,14, Expr_::Variable("b".into())), vec![ enb!(16,17, Expr_::Path(Path::Identifier("c".into()))) ])),
             enb!(20,21, Expr_::Path(Path::Identifier("d".into())))
         ])), enb!(24,25, Expr_::Path(Path::Identifier("e".into())))
     ])));
@@ -190,17 +190,47 @@ fn parse_expr_post_pre_dec_inc() {
     assert_eq!(process_expr("--$c"), enb!(0,2, Expr_::UnaryOp(UnaryOp::PreDec, eb!(2,4, Expr_::Variable("c".into())))));
 }
 
-/*
 #[test]
-fn parse_expr_array_append() {
-    // for now we support append-expressions like that, TODO: figure out error reporting (AST_Node -> Position in source file)
-    assert_eq!(process_expr(r#"$test[]=1"#), Expr::Assign(Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("test".into())), vec![Expr::None])), Box::new(Expr::Int(1))));
+fn parse_expr_static_const() {
+    assert_eq!(process_expr(r#"Obj::test"#), enb!(3,5, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,9, Expr_::Path(
+        Path::Identifier("test".into()))) ]))
+    );
 }
 
 #[test]
 fn parse_expr_static_property() {
-    assert_eq!(process_expr(r#"Obj::$test"#), Expr::StaticMember(Box::new(Expr::Path(Path::Identifier("Obj".into()))), vec![Expr::Variable("test".into())]));
-    assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticMember(Box::new(Expr::Path(Path::Identifier("Obj".into()))), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
+    assert_eq!(process_expr(r#"Obj::$test"#), enb!(3,5, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,10, Expr_::Variable("test".into())) ])));
+    //assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr::StaticMember(Box::new(Expr::Path(Path::Identifier("Obj".into()))), vec![Expr::Variable("a".into()), Expr::Variable("b".into())]));
+}
+
+#[test]
+fn parse_expr_ternary() {
+    assert_eq!(process_expr("$test?true:false"), enb!(None, Expr_::TernaryIf(eb!(0,5, Expr_::Variable("test".into())),
+        Some(eb!(6,10, constant!(true))), eb!(11,16, constant!(false)))
+    ));
+    assert_eq!(process_expr("!$test?true:false"), enb!(None, Expr_::TernaryIf(eb!(0,1, Expr_::UnaryOp(UnaryOp::Not,
+        eb!(1,6, Expr_::Variable("test".into())))), Some(eb!(7,11, constant!(true))), eb!(12,17, constant!(false)))
+    ));
+}
+
+#[test]
+fn parse_expr_new() {
+    assert_eq!(process_expr("new TestA()"), enb!(0,3, Expr_::New(eb!(4,9, Expr_::Path(Path::Identifier("TestA".into()))), vec![])));
+    assert_eq!(process_expr("new Foo\\Bar()"), enb!(0,3, Expr_::New(eb!(4,11, Expr_::Path(Path::NsIdentifier("Foo".into(), "Bar".into()))), vec![])));
+    //assert_eq!(process_expr("new Foo"), enb!(0,3, Expr_::New(eb!(4,7, Expr_::Path(Path::Identifier("Foo".into()))), vec![])));
+}
+
+#[test]
+fn parse_expr_clone() {
+    assert_eq!(process_expr("clone $test"), enb!(0,5, Expr_::Clone(eb!(6,11, Expr_::Variable("test".into())))));
+}
+
+/*
+
+#[test]
+fn parse_expr_array_append() {
+    // for now we support append-expressions like that, TODO: figure out error reporting (AST_Node -> Position in source file)
+    assert_eq!(process_expr(r#"$test[]=1"#), Expr::Assign(Box::new(Expr::ArrayIdx(Box::new(Expr::Variable("test".into())), vec![Expr::None])), Box::new(Expr::Int(1))));
 }
 
 #[test]
@@ -223,13 +253,6 @@ fn parse_expr_closure() {
 }
 
 #[test]
-fn parse_expr_new() {
-    assert_eq!(process_expr("new TestA()"), Expr::New(Box::new(Expr::Path(Path::Identifier("TestA".into()))), vec![]));
-    assert_eq!(process_expr("new Foo\\Bar()"), Expr::New(Box::new(Expr::Path(Path::NsIdentifier("Foo".into(), "Bar".into()))), vec![]));
-    assert_eq!(process_expr("new Foo"), Expr::New(Box::new(Expr::Path(Path::Identifier("Foo".into()))), vec![]));
-}
-
-#[test]
 fn parse_expr_array() {
     assert_eq!(process_expr("[]"), Expr::Array(vec![]));
     assert_eq!(process_expr("[1,]"), Expr::Array(vec![(Expr::None, Expr::Int(1)) ]));
@@ -243,29 +266,11 @@ fn parse_expr_array() {
 }
 
 #[test]
-fn parse_expr_reference() {
-    assert_eq!(process_expr("&$test"), Expr::Reference(Box::new(Expr::Variable("test".into()))));
-}
-
-#[test]
-fn parse_expr_ternary() {
-    assert_eq!(process_expr("$test?true:false"), Expr::TernaryIf(Box::new(Expr::Variable("test".into())), Box::new(Expr::True), Box::new(Expr::False)));
-    assert_eq!(process_expr("!$test?true:false"), Expr::TernaryIf(Box::new(Expr::UnaryOp(UnaryOp::Not,
-        Box::new(Expr::Variable("test".into())))), Box::new(Expr::True), Box::new(Expr::False))
-    );
-}
-
-#[test]
 fn parse_expr_assign() {
     assert_eq!(process_expr("($b=4)"), Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(4))));
     let negate_assign_result = Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Int(1)))));
     assert_eq!(process_expr("!($b=1)"), negate_assign_result);
     assert_eq!(process_expr("!$b=1"), negate_assign_result);
-}
-
-#[test]
-fn parse_expr_clone() {
-    assert_eq!(process_expr("clone $test"), Expr::Clone(Box::new(Expr::Variable("test".into()))));
 }
 
 #[test]

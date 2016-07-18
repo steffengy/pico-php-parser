@@ -76,7 +76,7 @@ macro_rules! from_usize {
         }
     };
 }
-from_usize!(None, LogicalIncOr1, LogicalAnd, BitwiseIncOr, Shift, Add, Mul, Pow, Unary);
+from_usize!(None, LogicalIncOr1, LogicalAnd, BitwiseIncOr, BitwiseExcOr, BitwiseAnd, Equality, Relational, Shift, Add, Mul, Pow, Unary);
 
 impl Token {
     fn precedence(&self) -> Precedence {
@@ -319,23 +319,66 @@ impl Parser {
         Err(())
     }
 
-    fn parse_dereferencable(&mut self, parsed_variable: Option<Expr>) -> Result<Expr, ()> {
-        let var = match parsed_variable {
-            None => try!(self.parse_variable()),
-            Some(parsed_variable) => parsed_variable,
+    fn parse_dereferencable(&mut self, parsed_variable: Option<Expr>, var_fallthrough: bool) -> Result<Expr, ()> {
+        #[inline]
+        fn parse_deref_operand(p: &mut Parser, var_fallthrough: bool) -> Result<(bool, Expr), ()> {
+            if var_fallthrough {
+                alt!(p.parse_variable().map(|x| (false, x)));
+            }
+            if let Ok(x) =  p.parse_class_name() {
+                return Ok((true, x))
+            }
+            Err(())
+        }
+
+        let old_pos = self.pos;
+        let (is_class_name, mut var_expr) = match parsed_variable {
+            None => try!(parse_deref_operand(self, var_fallthrough)),
+            Some(e) => (false, e),
         };
-        // dereferencable T_OBJECT_OPERATOR property_name = (T_OBJECT_OPERATOR)+
-        let mut obj_members = vec![];
+        println!("deref: {:?}", var_expr);
+        // dereferencable T_OBJECT_OPERATOR property_name = (T_OBJECT_OPERATOR property_name)+
+        // static_member indirection and whatever = (T_PAAMAYIM_NEKUDOTAYIM simple_variable)+
+        let mut i = 0;
         loop {
-            if_lookahead!(self, Token::ObjectOp, token, match self.parse_property_name() {
-                Err(x) => return Err(x),
-                Ok(p) => obj_members.push(p),
-            }, break);
+            i += 1;
+            //Expr(Expr_::ObjMember(Box::new(var), obj_members), Span::new())
+            if !is_class_name || i > 1 {
+                if_lookahead!(self, Token::ObjectOp, token, match (self.parse_property_name(), var_expr) {
+                    (Err(x), var_expr_new) => var_expr = var_expr_new,
+                    (Ok(p), Expr(Expr_::ObjMember(var, mut idxs), span)) => {
+                        idxs.push(p);
+                        var_expr = Expr(Expr_::ObjMember(var, idxs), span);
+                        continue;
+                    },
+                    (Ok(p), expr) => {
+                        var_expr = Expr(Expr_::ObjMember(Box::new(expr), vec![p]), token.1);
+                        continue;
+                    }
+                });
+            }
+            // this case additionally to "dereferencable" (which are some deeply nested indirect rules)
+            // accepts a "class_name" as prefix
+            if_lookahead!(self, Token::ScopeOp, token, match (self.parse_simple_variable(), var_expr) {
+                (Err(x), var_expr_new) => var_expr = var_expr_new,
+                (Ok(p), Expr(Expr_::StaticMember(var, mut idxs), span)) => {
+                    idxs.push(p);
+                    var_expr = Expr(Expr_::StaticMember(var, idxs), span);
+                    continue;
+                },
+                (Ok(p), expr) => {
+                    var_expr = Expr(Expr_::StaticMember(Box::new(expr), vec![p]), token.1);
+                    continue;
+                }
+            });
+            break;
         }
-        if !obj_members.is_empty() {
-            return Ok(Expr(Expr_::ObjMember(Box::new(var), obj_members), Span::new()));
+        // don't allow a fallthrough in every case
+        if i == 1 && (!var_fallthrough || is_class_name) {
+            self.pos = old_pos;
+            return Err(())
         }
-        Ok(var)
+        Ok(var_expr)
     }
 
     fn parse_variable(&mut self) -> Result<Expr, ()> {
@@ -343,16 +386,23 @@ impl Parser {
         // This works by passing the parsed callable variable into parse_dereferencable
         // so that it "knows" to stop the left-recursion there
         match self.parse_callable_variable() {
-            Err(x) => return Err(x),
-            Ok(x) => return self.parse_dereferencable(Some(x)),
+            Err(x) => self.parse_dereferencable(None, false),
+            Ok(x) => self.parse_dereferencable(Some(x), true),
         }
     }
 
     fn parse_expression(&mut self, prec: Precedence) -> Result<Expr, ()> {
-        // expr_without_variable TODO
-        alt!(self.parse_unary_expression(prec));
-        println!("err parse_expr");
-        Err(())
+        let expr = try!(self.parse_unary_expression(prec));
+        if let Precedence::None = prec {
+            // ternary ?<optional_expr>:
+            if_lookahead!(self, Token::QuestionMark, _token, {
+                let expr_ternary_if = try!(self.parse_opt_expression(Precedence::None));
+                if_lookahead!(self, Token::Colon, _token, {}, { return Err(()); });
+                let expr_ternary_else = try!(self.parse_expression(Precedence::None));
+                return Ok(Expr(Expr_::TernaryIf(Box::new(expr), expr_ternary_if.map(|x| Box::new(x)), Box::new(expr_ternary_else)), Span::new()));
+            });
+        }
+        Ok(expr)
     }
 
     fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Option<Expr>, ()> {
@@ -386,6 +436,20 @@ impl Parser {
                 return expr_ret;
             });
             return Err(())
+        });
+        // new
+        if_lookahead!(self, Token::New, token, {
+            match self.parse_class_name_reference() {
+                Err(x) => (),
+                Ok(x) => {
+                    let args = try!(self.parse_argument_list());
+                    return Ok(Expr(Expr_::New(Box::new(x), args), token.1));
+                }
+            }
+            // TODO: anonymous class
+        });
+        if_lookahead!(self, Token::Clone, token, {
+            return Ok(Expr(Expr_::Clone(Box::new(try!(self.parse_expression(Precedence::None)))), token.1));
         });
         // internal_functions_in_yacc / casts
         let ret = match self.next_token() {
@@ -556,9 +620,38 @@ impl Parser {
         }
     }
 
-    fn parse_constant(&mut self) -> Result<Expr, ()> {
-        //TODO
+    fn parse_class_name(&mut self) -> Result<Expr, ()> {
+        if_lookahead!(self, Token::Static, token, {
+            return Ok(Expr(Expr_::Path(Path::Identifier(self.interner.intern("static"))), token.1))
+        });
         self.parse_name()
+    }
+
+    fn parse_class_name_reference(&mut self) -> Result<Expr, ()> {
+        self.parse_class_name()
+    }
+
+    fn parse_identifier(&mut self) -> Result<Expr, ()> {
+        if_lookahead!(self, Token::String(_), token, {
+            if let Token::String(str_) = token.0 {
+                return Ok(Expr(Expr_::Path(Path::Identifier(str_)), token.1))
+            }
+        });
+        Err(())
+    }
+
+    fn parse_constant(&mut self) -> Result<Expr, ()> {
+        // class_name T_PAAMAYIM_NEKUDOTAYIM identifier
+        // parse a class_name if we don't find T_PAAMAYIM_NEKUDOTAYIM we just return the class_name
+        // (which is luckily handled identically as a name)
+        let name = try!(self.parse_class_name());
+        if_lookahead!(self, Token::ScopeOp, token, {
+            match self.parse_identifier() {
+                Err(x) => return Err(x),
+                Ok(ident) => return Ok(Expr(Expr_::StaticMember(Box::new(name), vec![ident]), token.1)),
+            }
+        });
+        Ok(name)
     }
 
     fn parse_encaps_list(&mut self) -> Result<Expr, ()> {
@@ -634,7 +727,7 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Expr, ()> {
         // expr ';'
-        let expr = try!(self.parse_unary_expression(Precedence::None));
+        let expr = try!(self.parse_expression(Precedence::None));
         if_lookahead!(self, Token::SemiColon, _token, { return Ok(expr) });
         Err(())
     }

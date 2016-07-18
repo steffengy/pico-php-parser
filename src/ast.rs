@@ -157,7 +157,7 @@ pub enum Expr_ {
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used
     /// TODO: this should be desugared into an `If` during post-processing
-    TernaryIf(Box<Expr>, Box<Expr>, Box<Expr>),
+    TernaryIf(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
 
     // These are not actual expressions, but will be stored as such, before any filtering happens
     Decl(Decl),
