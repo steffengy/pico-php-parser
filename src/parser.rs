@@ -11,7 +11,7 @@ use std::mem;
 use std::borrow::Borrow;
 use tokenizer::{Tokenizer, Token, TokenSpan};
 use interner::Interner;
-pub use tokenizer::{Span, SyntaxError};
+pub use tokenizer::{Span, SyntaxError, mk_span};
 pub use ast::{Expr, Expr_, IncludeTy, UnaryOp, Op, Path, Ty};
 
 pub struct Parser {
@@ -778,6 +778,81 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Expr, ()> {
+        // parse a block: { statements }
+        if_lookahead!(self, Token::CurlyBracesOpen, token, {
+            let mut block = vec![];
+            loop {
+                // TODO: better error handling
+                match self.parse_inner_statement() {
+                    Err(()) => break,
+                    Ok(x) => block.push(x),
+                }
+            }
+            let end_pos = if_lookahead!(self, Token::CurlyBracesClose, token, token.1.end, { return Err(()); });
+            return Ok(Expr(Expr_::Block(block), mk_span(token.1.start as usize, end_pos as usize)));
+        });
+        // parse an if/while-statement/do-while
+        match self.next_token().map(|x| x.0.clone()) {
+            Some(Token::If) | Some(Token::While) | Some(Token::Do) => {
+                let token = self.next_token().unwrap().clone();
+                self.advance(1);
+                let mut stmts = vec![];
+                let do_while_body = match token.0 {
+                    Token::Do => {
+                        let ret = try!(self.parse_statement());
+                        if_lookahead!(self, Token::While, _tok, Some(ret), return Err(()))
+                    },
+                    _ => None,
+                };
+
+                loop {
+                    // in the initial run we always require parentheses, also for elseif tokens
+                    // for an else token we don't and if we find nothing we break
+                    let (requires_parents, start_pos) = if stmts.len() == 0 {
+                        (true, token.1.start)
+                    } else {
+                        if_lookahead!(self, Token::ElseIf, else_token, {(true, else_token.1.start)},
+                            if_lookahead!(self, Token::Else, else_token, {(false, else_token.1.start)}, break)
+                        )
+                    };
+                    let cond_expr = match requires_parents {
+                        true => {
+                            if_lookahead!(self, Token::ParenthesesOpen, _tok, {}, { return Err(()) });
+                            let if_expr = try!(self.parse_expression(Precedence::None));
+                            if_lookahead!(self, Token::ParenthesesClose, _tok, {}, return Err(()) );
+                            Some(if_expr)
+                        },
+                        false => None,
+                    };
+
+                    if let Token::Do = token.0 {
+                        let end_pos = if_lookahead!(self, Token::SemiColon, token, token.1.end, return Err(()));
+                        let span = mk_span(start_pos as usize, end_pos as usize);
+                        return Ok(Expr(Expr_::DoWhile(Box::new(do_while_body.unwrap()), Box::new(cond_expr.unwrap())), span));
+                    }
+
+                    let if_body = try!(self.parse_statement());
+                    let span = mk_span(start_pos as usize, if_body.1.end as usize);
+
+                    if let Token::While = token.0 {
+                        return Ok(Expr(Expr_::While(Box::new(cond_expr.unwrap()), Box::new(if_body)), span))
+                    }
+
+                    if let Some(cond_expr) = cond_expr {
+                        stmts.push(Expr(Expr_::If(Box::new(cond_expr), Box::new(if_body), None), span));
+                    } else {
+                        stmts.push(if_body);
+                    }
+                }
+                let initial_stmt = stmts.pop().unwrap();
+                return Ok(stmts.into_iter().rev().fold(initial_stmt, |acc, el| match (acc, el) {
+                    (e2, Expr(Expr_::If(cond, bl, None), span)) => Expr(Expr_::If(cond, bl, Some(Box::new(e2))), span),
+                    _ => unreachable!(),
+                }));
+            },
+            _ => ()
+        }
+        // parse other statements
         let expr = match self.next_token().map(|x| x.clone()) {
             Some(TokenSpan(token, span)) => {
                 self.advance(1);
@@ -804,9 +879,16 @@ impl Parser {
         Ok(expr)
     }
 
+    /// this subform is just used to disallow certain constructs in inner scopes
+    /// (e.g. not allowing namespace stuff, throwing error for __HALTCOMPILER, etc.)
+    fn parse_inner_statement(&mut self) -> Result<Expr, ()> {
+        // TODO: incomplete
+        self.parse_statement()
+    }
+
     fn parse_top_statement(&mut self) -> Result<Expr, ()> {
         // TODO: incomplete
-        return self.parse_statement();
+        self.parse_statement()
     }
 
     fn parse_tokens(interner: Interner, toks: Vec<TokenSpan>) -> Vec<Expr> {

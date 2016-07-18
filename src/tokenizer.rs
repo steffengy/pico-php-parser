@@ -7,7 +7,7 @@ use interner::Interner;
 pub use tokens::{Span, Token, TokenSpan, SyntaxError};
 
 #[inline]
-fn mk_span(start: usize, end: usize) -> Span {
+pub fn mk_span(start: usize, end: usize) -> Span {
     Span { start: start as u32, end: end as u32, ..Span::new() }
 }
 
