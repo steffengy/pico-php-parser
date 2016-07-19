@@ -13,7 +13,8 @@ use std::iter;
 use tokenizer::{Tokenizer, Token, TokenSpan};
 use interner::Interner;
 pub use tokenizer::{Span, SyntaxError, TokenizerExternalState, mk_span};
-pub use ast::{Expr, Expr_, IncludeTy, UnaryOp, Op, Path, Ty};
+pub use ast::{Block, CatchClause, Expr, Expr_, IncludeTy, UnaryOp, Op, Path, Ty};
+pub use ast::{Decl, FunctionDecl, ParamDefinition};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -190,17 +191,10 @@ macro_rules! alt {
     })
 }
 
-macro_rules! alt_not {
-    ($e:expr, $next:expr) => (match $e {
-        None => $next,
-        Some(x) => Some(x),
-    })
-}
-
 macro_rules! deepest {
     ($store:expr, $expr:expr) => {
         match $expr {
-            Ok(e) => e,
+            Ok(e) => return Ok(e),
             Err(x) => {
                 match $store {
                     Some((spos, _)) => if x.pos > spos {
@@ -211,6 +205,13 @@ macro_rules! deepest {
             }
         }
     };
+}
+
+macro_rules! deepest_unpack {
+    ($self_:expr, $err:expr) => {match $err {
+        Some((_, err)) => Err(err),
+        None => Err(ParserError::new(vec![], $self_.pos)),
+    }};
 }
 
 // check if the next token is X, if return and execute block
@@ -225,6 +226,11 @@ macro_rules! if_lookahead {
         }
     };
     ($self_:expr, $a:pat, $v:ident, $block:expr) => {if_lookahead!($self_, $a, $v, $block, {})};
+}
+
+// reset the position if no return happened
+macro_rules! if_lookahead_restore {
+    ($self_:expr, $a:pat, $v:ident, $block:expr) => {if_lookahead!($self_, $a, $v, { let bak_pos = $self_.pos - 1; $block; $self_.pos = bak_pos; })};
 }
 
 // check if the next token is X, if not return a ParserError expecting it
@@ -410,39 +416,6 @@ impl Parser {
         Ok(Expr(Expr_::Call(Box::new(name_expr), args), Span::new()))
     }
 
-    fn parse_callable_variable(&mut self) -> Result<Expr, ParserError> {
-        let mut var_expr = match self.parse_simple_variable() {
-            Err(x) => try!(self.parse_function_call(None).map_err(|x| x.0)),
-            Ok(x) => x,
-        };
-        // ('[' optional_expr ']')+
-        // TODO: fix the spans
-        loop {
-            if_lookahead!(self, Token::SquareBracketOpen, _tok, match self.parse_opt_expression(Precedence::None) {
-                Err(x) => return Err(x),
-                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, match expr {
-                    Some(expr) => {
-                        if let Expr(Expr_::ArrayIdx(_, ref mut idxs), _) = var_expr {
-                            idxs.push(expr);
-                        } else {
-                            var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), Span::new());
-                        }
-                        continue
-                    },
-                    None => {
-                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![]), Span::new());
-                        continue;
-                    }
-                }),
-            });
-            // attempt to inline parse_function_call, for "callable_expr argument_list"
-            var_expr = match self.parse_function_call(Some(var_expr)) {
-                Err((err, var_expr)) => return Ok(var_expr.unwrap()),
-                Ok(x) => x,
-            };
-        }
-        unreachable!();    }
-
     fn parse_property_name(&mut self) -> Result<Expr, ParserError> {
         let err1 = alt!(self.parse_simple_variable());
         if_lookahead!(self, Token::String(_), token, {
@@ -460,46 +433,106 @@ impl Parser {
         Err(ParserError::new(vec![], self.pos))
     }
 
-    fn parse_dereferencable(&mut self, parsed_variable: Option<Expr>, var_fallthrough: bool) -> Result<Expr, ParserError> {
+    fn parse_variable(&mut self) -> Result<Expr, ParserError> {
         #[inline]
-        fn parse_deref_operand(p: &mut Parser, var_fallthrough: bool) -> Result<(bool, Expr), ParserError> {
-            if var_fallthrough {
-                alt!(p.parse_variable().map(|x| (false, x)));
-            }
-            if let Ok(x) =  p.parse_class_name() {
-                return Ok((true, x))
-            }
-            Err(ParserError::new(vec![], p.pos))
+        fn parse_base_variable(p: &mut Parser) -> Result<(Expr, bool), ParserError> {
+            let mut deepest_err: Option<(usize, ParserError)> = None;
+            if_lookahead!(p, Token::ParenthesesOpen, _tok, {
+                let expr = try!(p.parse_expression(Precedence::None));
+                if_lookahead_expect!(p, Token::ParenthesesClose, Token::ParenthesesClose);
+                return Ok((expr, false));
+            });
+            deepest!(deepest_err, p.parse_simple_variable().map(|x| (x, false)));
+            deepest!(deepest_err, p.parse_dereferencable_scalar().map(|x| (x, false)));
+            deepest_unpack!(p, deepest_err)
         }
 
-        let old_pos = self.pos;
-        let (is_class_name, mut var_expr) = match parsed_variable {
-            None => try!(parse_deref_operand(self, var_fallthrough)),
-            Some(e) => (false, e),
-        };
-        println!("deref: {:?}", var_expr);
-        // dereferencable T_OBJECT_OPERATOR property_name = (T_OBJECT_OPERATOR property_name)+
-        // static_member indirection and whatever = (T_PAAMAYIM_NEKUDOTAYIM simple_variable)+
-        let mut i = 0;
-        loop {
-            i += 1;
-            //Expr(Expr_::ObjMember(Box::new(var), obj_members), Span::new())
-            if !is_class_name || i > 1 {
-                if_lookahead!(self, Token::ObjectOp, token, match (self.parse_property_name(), var_expr) {
-                    (Err(x), var_expr_new) => var_expr = var_expr_new,
-                    (Ok(p), Expr(Expr_::ObjMember(var, mut idxs), span)) => {
-                        idxs.push(p);
-                        var_expr = Expr(Expr_::ObjMember(var, idxs), span);
-                        continue;
-                    },
-                    (Ok(p), expr) => {
-                        var_expr = Expr(Expr_::ObjMember(Box::new(expr), vec![p]), token.1);
-                        continue;
+        //  parse the "base" item, after which some "appendixes" for array indexing, function calling or members can be
+        //    class_name T_PAAMAYIM_NEKUDOTAYIM simple_variable
+        //    class_name T_PAAMAYIM_NEKUDOTAYIM identifier '['   //inlined the "constant" grammar rule
+        #[inline]
+        fn parse_const_scoped(p: &mut Parser) -> Result<(Expr, Expr, Span), ParserError> {
+            let old_pos = p.pos;
+            if let Ok(cls_name) = p.parse_class_name() {
+                if_lookahead!(p, Token::ScopeOp, tok, {
+                    if let Ok(var_name) = p.parse_simple_variable() {
+                        return Ok((cls_name, var_name, tok.1));
+                    }
+                    let identifier = try!(p.parse_identifier());
+                    if let Some(&TokenSpan(Token::SquareBracketOpen, _)) = p.next_token() {
+                        return Ok((cls_name, identifier, tok.1))
                     }
                 });
             }
-            // this case additionally to "dereferencable" (which are some deeply nested indirect rules)
-            // accepts a "class_name" as prefix
+            p.pos = old_pos;
+            Err(ParserError::new(vec![], p.pos))
+        }
+
+        #[inline]
+        fn parse_fn_call_base_item(p: &mut Parser) -> Result<Expr, ParserError> {
+            let old_pos = p.pos;
+            // parse name followed by call syntax
+            if let Ok(name) = p.parse_name() {
+                if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = p.next_token() {
+                    return Ok(name)
+                }
+            }
+            p.pos = old_pos;
+            Err(ParserError::new(vec![], p.pos))
+        }
+
+        println!("prevar");
+        let old_pos = self.pos;
+        let (mut var_expr, requires_appendix) = match parse_const_scoped(self) {
+            Ok((cls, prop, span)) => (Expr(Expr_::StaticMember(Box::new(cls), vec![prop]), span), false),
+            Err(_) => match parse_fn_call_base_item(self) {
+                Ok(e) => (e, false),
+                Err(_) => match parse_base_variable(self) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        self.pos = old_pos;
+                        return Err(e);
+                    }
+                }
+            }
+        };
+
+        let mut i = 0;
+        // handle appendixes
+        loop {
+            i += 1;
+            // array indexing
+            if_lookahead!(self, Token::SquareBracketOpen, _tok, match self.parse_opt_expression(Precedence::None) {
+                Err(x) => return Err(x),
+                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, match expr {
+                    Some(expr) => {
+                        if let Expr(Expr_::ArrayIdx(_, ref mut idxs), _) = var_expr {
+                            idxs.push(expr);
+                        } else {
+                            var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), Span::new());
+                        }
+                        continue
+                    },
+                    None => {
+                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![]), Span::new());
+                        continue;
+                    }
+                }),
+            });
+            // object property indexing
+            if_lookahead!(self, Token::ObjectOp, token, match (self.parse_property_name(), var_expr) {
+                (Err(x), var_expr_new) => var_expr = var_expr_new,
+                (Ok(p), Expr(Expr_::ObjMember(var, mut idxs), span)) => {
+                    idxs.push(p);
+                    var_expr = Expr(Expr_::ObjMember(var, idxs), span);
+                    continue;
+                },
+                (Ok(p), expr) => {
+                    var_expr = Expr(Expr_::ObjMember(Box::new(expr), vec![p]), token.1);
+                    continue;
+                }
+            });
+            // static member indexing
             if_lookahead!(self, Token::ScopeOp, token, match (self.parse_simple_variable(), var_expr) {
                 (Err(x), var_expr_new) => var_expr = var_expr_new,
                 (Ok(p), Expr(Expr_::StaticMember(var, mut idxs), span)) => {
@@ -512,24 +545,22 @@ impl Parser {
                     continue;
                 }
             });
+            // call syntax
+            if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = self.next_token() {
+                let args = try!(self.parse_argument_list());
+                var_expr = Expr(Expr_::Call(Box::new(var_expr), args), mk_span(0,0));
+                continue;
+            }
             break;
         }
-        // don't allow a fallthrough in every case
-        if i == 1 && (!var_fallthrough || is_class_name) {
-            self.pos = old_pos;
-            return Err(ParserError::new(vec![], self.pos))
-        }
-        Ok(var_expr)
-    }
 
-    fn parse_variable(&mut self) -> Result<Expr, ParserError> {
-        // To eliminate the left recursion we need to "inline" the last 2 rules of dereferencable
-        // This works by passing the parsed callable variable into parse_dereferencable
-        // so that it "knows" to stop the left-recursion there
-        match self.parse_callable_variable() {
-            Err(x) => self.parse_dereferencable(None, false),
-            Ok(x) => self.parse_dereferencable(Some(x), true),
+        // filter out the expression types that can't be alone
+        if requires_appendix && i < 2 {
+            self.pos = old_pos;
+            return Err(ParserError::new(vec![], self.pos));
         }
+
+        Ok(var_expr)
     }
 
     fn parse_expression(&mut self, prec: Precedence) -> Result<Expr, ParserError> {
@@ -557,21 +588,90 @@ impl Parser {
         Ok(expr)
     }
 
+    #[inline]
+    fn parse_is_ref(&mut self) -> bool {
+        if_lookahead!(self, Token::Ampersand, _tok, true, false)
+    }
+
+    fn parse_parameter_list(&mut self) -> (Vec<ParamDefinition>, Option<ParserError>) {
+        let mut params = vec![];
+        loop {
+            //todo: type
+            let is_ref = self.parse_is_ref();
+            //todo: variadic
+            let param_name = if_lookahead!(self, Token::Variable(_), token, {
+                match token.0 {
+                    Token::Variable(name) => name,
+                    _ => unreachable!(),
+                }
+            }, {
+                return (params, Some(ParserError::new(vec![Token::Variable(self.interner.intern(""))], self.pos)))
+            });
+            //todo: optional value
+            params.push(ParamDefinition {
+                name: param_name,
+                as_ref: is_ref,
+                ty: None,
+                default: None,
+            });
+            if_lookahead!(self, Token::Comma, _tok, {}, break);
+        }
+        (params, None)
+    }
+
+    fn parse_function_declaration(&mut self, span: Span, parse_closure: bool) -> Result<Expr, ParserError> {
+        //TODO: doc_comment
+        let returns_ref = self.parse_is_ref();
+        let name = match parse_closure {
+            true => None,
+            false => Some(if_lookahead_expect!(self, Token::String(_), Token::String(self.interner.intern("")), token, {
+                match token.0 {
+                    Token::String(str_) => str_,
+                    _ => unreachable!(),
+                }
+            }))
+        };
+        if_lookahead_expect!(self, Token::ParenthesesOpen, Token::ParenthesesOpen);
+        let (params, params_err) = self.parse_parameter_list();
+        if_lookahead!(self, Token::ParenthesesClose, _tok, {}, return Err(params_err.unwrap()));
+        // TODO: lexical_vars (use)
+        // TODO: return_type
+        if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
+        let (body, stmts_err) = self.parse_inner_statement_list();
+        let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, {
+            if let Some(err) = stmts_err {
+                return Err(err)
+            }
+        });
+        let decl = FunctionDecl {
+            params: params,
+            body: Block(body),
+            usev: vec![],
+            ret_ref: returns_ref,
+        };
+        let span = mk_span(span.start as usize, end_pos as usize);
+        return Ok(Expr(match name {
+            None => Expr_::Function(decl),
+            Some(name) => Expr_::Decl(Decl::GlobalFunction(name, decl)),
+        }, span))
+    }
+
     /// parsing all expressions after the precedence applying (stage 2 "callback")
     fn parse_other_expression(&mut self) -> Result<Expr, ParserError> {
         let mut deepest_err: Option<(usize, ParserError)> = None;
 
-        // '(' expr ')'
-        if_lookahead!(self, Token::ParenthesesOpen, _token, {
-            let expr_ret =  try!(self.parse_expression(Precedence::None));
-            if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, _token2, return Ok(expr_ret));
-        });
         // new
         if_lookahead!(self, Token::New, token, {
             match self.parse_class_name_reference() {
                 Err(x) => (),
                 Ok(x) => {
-                    let args = try!(self.parse_argument_list());
+                    let has_parents = if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = self.next_token() { true } else {
+                        false
+                    };
+                    let args = match has_parents {
+                        true => try!(self.parse_argument_list()),
+                        false => vec![],
+                    };
                     return Ok(Expr(Expr_::New(Box::new(x), args), token.1));
                 }
             }
@@ -586,6 +686,10 @@ impl Parser {
                 if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, _tok, ret)
             }, None);
             return Ok(Expr(Expr_::Exit(expr.map(|x| Box::new(x))), token.1));
+        });
+        // function declaration (anonymous function)
+        if_lookahead!(self, Token::Function, token, {
+            return self.parse_function_declaration(token.1, true);
         });
         // internal_functions_in_yacc / casts
         let ret = match self.next_token() {
@@ -704,12 +808,16 @@ impl Parser {
             },
             Err(err) => Err(err),
         });
-        deepest!(deepest_err, Err(alt!(self.parse_scalar())));
+
+        // '(' expr ')'
+        if_lookahead!(self, Token::ParenthesesOpen, _token, {
+            let expr_ret =  try!(self.parse_expression(Precedence::None));
+            if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, _token2, return Ok(expr_ret));
+        });
+
+        deepest!(deepest_err, self.parse_scalar());
         println!("err other_expr");
-        match deepest_err {
-            Some((_, err)) => Err(err),
-            None => Err(ParserError::new(vec![], self.pos)),
-        }
+        deepest_unpack!(self, deepest_err)
     }
 
     fn parse_namespace_name(&mut self) -> Result<Expr, ParserError> {
@@ -899,18 +1007,58 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Expr, ParserError> {
+        let mut deepest_err: Option<(usize, ParserError)> = None;
+
         // parse a block: { statements }
         if_lookahead!(self, Token::CurlyBracesOpen, token, {
-            let mut block = vec![];
+            let (block, stmts_err) = self.parse_inner_statement_list();
+            let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, if let Some(err) = stmts_err {
+                return Err(err)
+            });
+            return Ok(Expr(Expr_::Block(Block(block)), mk_span(token.1.start as usize, end_pos as usize)));
+        });
+        // parse a try statement
+        if_lookahead!(self, Token::Try, token, {
+            if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
+            let (body, stmts_err) = self.parse_inner_statement_list();
+            let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, if let Some(err) = stmts_err {
+                return Err(err)
+            });
+            // parse catch-clauses
+            let mut catch_clauses = vec![];
             loop {
-                // TODO: better error handling
-                match self.parse_inner_statement() {
-                    Err(_) => break,
-                    Ok(x) => block.push(x),
-                }
+                if_lookahead!(self, Token::Catch, _tok, {
+                    if_lookahead_expect!(self, Token::ParenthesesOpen, Token::ParenthesesOpen);
+                    //TODO: support | syntax
+                    let ty_name = try!(self.parse_name());
+                    let ty = match ty_name {
+                        Expr(Expr_::Path(path), _) => path,
+                        _ => unreachable!(),
+                    };
+                    let var_binding = if_lookahead_expect!(self, Token::Variable(_), Token::Variable(self.interner.intern("")), tok, match tok.0 {
+                        Token::Variable(varname) => varname,
+                        _ => unreachable!(),
+                    });
+                    if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
+                    if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
+                    let (block, stmts_err) = self.parse_inner_statement_list();
+                    if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, {}, if let Some(err) = stmts_err {
+                        return Err(err)
+                    });
+                    catch_clauses.push(CatchClause { ty: ty, var: var_binding, block: Block(block) });
+                }, break);
             }
-            let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, token, token.1.end);
-            return Ok(Expr(Expr_::Block(block), mk_span(token.1.start as usize, end_pos as usize)));
+            // parse finally clause (optional)
+            let finally_clause = if_lookahead!(self, Token::Finally, _tok, {
+                if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
+                let (fbody, stmts_err) = self.parse_inner_statement_list();
+                let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, if let Some(err) = stmts_err {
+                    return Err(err)
+                });
+                Some(Block(fbody))
+            }, None);
+            let span = mk_span(token.1.start as usize, self.tokens[self.pos-1].1.end as usize);
+            return Ok(Expr(Expr_::Try(Block(body), catch_clauses, finally_clause), span));
         });
         // parse a foreach statement
         if_lookahead!(self, Token::Foreach, token, {
@@ -1004,8 +1152,14 @@ impl Parser {
             },
             _ => ()
         }
+        // function declaration statement
+        if_lookahead_restore!(self, Token::Function, token, {
+            deepest!(deepest_err, self.parse_function_declaration(token.1, false));
+        });
+        println!("at {:?}", self.next_token());
+
         // parse other statements
-        let expr = match self.next_token().map(|x| x.clone()) {
+        deepest!(deepest_err, match self.next_token().map(|x| x.clone()) {
             Some(TokenSpan(token, span)) => {
                 self.advance(1);
                 let ret = match token {
@@ -1020,15 +1174,27 @@ impl Parser {
                 if let None = ret {
                     self.advance(-1);
                 }
-                ret
+                if let Some(ret) = ret {
+                    // check if the statement is properly terminated
+                    if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
+                    return Ok(ret);
+                }
+                Err(ParserError::new(vec![], self.pos))
             },
             _ => return Err(ParserError::new(vec![], self.pos)),
-        };
+        });
+
         // expr ';'
-        let expr = try!(alt_not!(expr, Some(try!(self.parse_expression(Precedence::None)))).ok_or(ParserError::new(vec![], self.pos)));
-        // check if the statement is properly terminated
-        if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
-        Ok(expr)
+        deepest!(deepest_err, match self.parse_expression(Precedence::None) {
+            Err(x) => Err(x),
+            ret => {
+                if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
+                return ret;
+            }
+        });
+
+        // TODO: error reporting
+        deepest_unpack!(self, deepest_err)
     }
 
     /// this subform is just used to disallow certain constructs in inner scopes
@@ -1038,9 +1204,34 @@ impl Parser {
         self.parse_statement()
     }
 
+    /// this will fail in all usages, and that's ok
+    /// to determine whether the error is really an error just lookahead for your token
+    /// mostly probably a } or )
+    fn parse_inner_statement_list(&mut self) -> (Vec<Expr>, Option<ParserError>) {
+        let mut exprs = vec![];
+        let tokc = self.tokens.len() - 1;
+        while self.pos <= tokc {
+            let expr = match self.parse_inner_statement() {
+                Err(e) => return (exprs, Some(e)),
+                Ok(expr) => expr,
+            };
+            exprs.push(expr);
+        }
+        (exprs, None)
+    }
+
     fn parse_top_statement(&mut self) -> Result<Expr, ParserError> {
         // TODO: incomplete
         self.parse_statement()
+    }
+
+    fn parse_top_statement_list(&mut self) -> Result<Vec<Expr>, ParserError> {
+        let mut exprs = vec![];
+        let tokc = self.tokens.len() - 1;
+        while self.pos <= tokc {
+            exprs.push(try!(self.parse_top_statement()));
+        }
+        Ok(exprs)
     }
 
     fn parse_tokens(interner: Interner, ext: TokenizerExternalState, toks: Vec<TokenSpan>) -> Result<Vec<Expr>, SpannedParserError> {
@@ -1062,34 +1253,29 @@ impl Parser {
         println!("{:?}", tokens);
         let mut p = Parser::new(tokens, ext, interner);
         // error handling..
-        let mut exprs = vec![];
-        let tokc = p.tokens.len() - 1;
-        while p.pos <= tokc {
-            exprs.push(match p.parse_top_statement() {
-                Err(e) => {
-                    let (pos, after) = if e.pos < p.tokens.len() { (e.pos, false) } else {
-                        (p.tokens.len() - 1, true)
-                    };
-                    let span = p.tokens[pos].1.clone();
-                    let (start, end) = match after {
-                        true => (span.end, span.end + 1),
-                        false => (span.start, span.end)
-                    };
-                    let line = p.external.line_map.line_from_position(end as usize);
-                    let (line_start, line_end) = p.external.line_map.line(line);
-                    return Err(SpannedParserError {
-                        start: start,
-                        end: end,
-                        line: line,
-                        line_start: line_start,
-                        line_end: line_end,
-                        error: e,
-                    })
-                },
-                Ok(x) => x,
-            });
-        }
-        Ok(exprs)
+        Ok(match p.parse_top_statement_list() {
+            Err(e) => {
+                let (pos, after) = if e.pos < p.tokens.len() { (e.pos, false) } else {
+                    (p.tokens.len() - 1, true)
+                };
+                let span = p.tokens[pos].1.clone();
+                let (start, end) = match after {
+                    true => (span.end, span.end + 1),
+                    false => (span.start, span.end)
+                };
+                let line = p.external.line_map.line_from_position(end as usize);
+                let (line_start, line_end) = p.external.line_map.line(line);
+                return Err(SpannedParserError {
+                    start: start,
+                    end: end,
+                    line: line,
+                    line_start: line_start,
+                    line_end: line_end,
+                    error: e,
+                })
+            },
+            Ok(x) => x,
+        })
     }
 
     pub fn parse_str(s: &str) -> Result<Vec<Expr>, SpannedParserError> {

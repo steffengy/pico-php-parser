@@ -97,6 +97,9 @@ pub struct Modifiers(pub bool, pub Visibility, pub ClassModifier);
 pub struct Expr(pub Expr_, pub Span);
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Block(pub Vec<Expr>);
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
     /// indicates the path to e.g. a namespace or is a simple identifier
     Path(Path),
@@ -131,7 +134,7 @@ pub enum Expr_ {
     Function(FunctionDecl),
 
     // statements
-    Block(Vec<Expr>),
+    Block(Block),
     Assign(Box<Expr>, Box<Expr>),
     /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
     CompoundAssign(Box<Expr>, Op, Box<Expr>),
@@ -145,13 +148,13 @@ pub enum Expr_ {
     For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Box<Expr>),
     ForEach(Box<Expr>, Option<Box<Expr>>, Box<Expr>, Box<Expr>),
     /// Try(TryBlock, CatchClauses, FinallyClause)
-    Try(Box<Expr>, Vec<CatchClause>, Box<Expr>),
+    Try(Block, Vec<CatchClause>, Option<Block>),
 
     /// switch (stmt=.0) [case item: body]+=.1
     /// All item-cases for a body will be included in the first-member Vec
     /// so basically we have a mapping from all-cases -> body in .1
     /// TODO: should be desugared into an if-statement
-    Switch(Box<Expr>, Vec<(Vec<Expr>, Expr)>),
+    Switch(Box<Expr>, Vec<(Block, Expr)>),
 
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used
@@ -195,13 +198,13 @@ pub struct ParamDefinition {
     /// The type of the parameter
     pub ty: Option<Ty>,
     /// The default value for the parameter
-    pub default: Expr,
+    pub default: Option<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDecl {
     pub params: Vec<ParamDefinition>,
-    pub body: Vec<Expr>,
+    pub body: Block,
     /// A list of variables to pass from the parent scope to the scope of this function
     /// So variables which are basically available shared into this function's scope
     pub usev: Vec<RcStr>,
@@ -240,5 +243,5 @@ pub enum Decl {
 pub struct CatchClause {
     pub ty: Path,
     pub var: RcStr,
-    pub block: Expr,
+    pub block: Block,
 }

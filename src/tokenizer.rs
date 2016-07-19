@@ -935,6 +935,7 @@ impl<'a> Tokenizer<'a> {
                 }
             } else { Err(SyntaxError::None) }
         });
+        ret_token!(match_token!(self, "try",  Try));
         ret_token!(match_token!(self, "catch",  Catch));
         ret_token!(match_token!(self, "finally",  Finally));
         ret_token!(match_token!(self, "throw",  Throw));

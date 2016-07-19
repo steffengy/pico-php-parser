@@ -89,6 +89,7 @@ pub enum Token {
     Return,
     Yield,
     YieldFrom,
+    Try,
     Catch,
     Finally,
     Throw,

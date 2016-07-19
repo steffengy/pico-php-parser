@@ -23,11 +23,13 @@ fn parse_expr_op() {
             eb!(8, 10, Expr_::BinaryOp(Op::Pow, eb!(6, 8, Expr_::Variable("c".into())), eb!(10, 12, Expr_::Variable("d".into()))))
         ))
     )));
-    /*assert_eq!(process_expr(r#"$g["a"]-$g["b"]/3"#), Expr_::BinaryOp(
+    assert_eq!(process_expr(r#"$g["a"]-$g["b"]/3"#), enb!(7,8, Expr_::BinaryOp(
         Op::Sub,
-        Box::new(Expr_::ArrayIdx(Box::new(Expr_::Variable("g".into())), vec![Expr_::String("a".into())])),
-        Box::new(Expr_::BinaryOp(Op::Div, Box::new(Expr_::ArrayIdx(Box::new(Expr_::Variable("g".into())), vec![Expr_::String("b".into())])), Box::new(Expr_::Int(3))))
-    ));*/
+        eb!(None, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ enb!(3,6, Expr_::String("a".into())) ])),
+        eb!(15,16, Expr_::BinaryOp(Op::Div, eb!(None, Expr_::ArrayIdx(eb!(8,10, Expr_::Variable("g".into())), vec![
+            enb!(11,14, Expr_::String("b".into())) ])), eb!(16,17, Expr_::Int(3)))
+        )
+    )));
 }
 
 #[test]
@@ -93,10 +95,10 @@ fn parse_expr_object_property() {
             enb!(20,21, Expr_::Path(Path::Identifier("d".into())))
         ])), enb!(24,25, Expr_::Path(Path::Identifier("e".into())))
     ])));
-    /*assert_eq!(process_expr(r#"$obj->$a->b()"#), enb!(None, Expr_::Call(eb!(None, Expr_::ObjMember(
+    assert_eq!(process_expr(r#"$obj->$a->b()"#), enb!(None, Expr_::Call(eb!(4,6, Expr_::ObjMember(
         eb!(0,4, Expr_::Variable("obj".into())),
         vec![ enb!(6,8, Expr_::Variable("a".into())), enb!(10,11, Expr_::Path(Path::Identifier("b".into()))) ]
-    )), vec![])));*/
+    )), vec![])));
 }
 
 #[test]
@@ -179,7 +181,9 @@ fn parse_expr_static_const() {
 #[test]
 fn parse_expr_static_property() {
     assert_eq!(process_expr(r#"Obj::$test"#), enb!(3,5, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,10, Expr_::Variable("test".into())) ])));
-    //assert_eq!(process_expr(r#"Obj::$a::$b"#), Expr_::StaticMember(Box::new(Expr_::Path(Path::Identifier("Obj".into()))), vec![Expr_::Variable("a".into()), Expr_::Variable("b".into())]));
+    assert_eq!(process_expr(r#"Obj::$a::$b"#), enb!(3,5, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![
+        enb!(5,7, Expr_::Variable("a".into())), enb!(9,11, Expr_::Variable("b".into()))
+    ])));
 }
 
 #[test]
@@ -246,23 +250,22 @@ fn parse_expr_array() {
     assert_eq!(process_expr("array()"), enb!(0,7, Expr_::Array(vec![])));
 }
 
-/*#[test]
-fn parse_expr_priority_parents_call() {
-    assert_eq!(process_expr("(new $obj)->method()"), enb!(None, Expr_::Call(eb!(10,12, Expr_::ObjMember(eb!(1,4, Expr_::New(eb!(5,9, Expr_::Variable("obj".into())), vec![])),
-        vec![ enb!(12,18, Expr_::Path(Path::Identifier("method".into()))) ]
-    )), vec![])));
-}
-*/
-/*
 
 #[test]
 fn parse_expr_closure() {
-    assert_eq!(process_expr("function () { c(); }"), Expr_::Function(FunctionDecl {
+    assert_eq!(process_expr("function () { c(); }"), enb!(0,20, Expr_::Function(FunctionDecl {
         params: vec![],
-        body: vec![Expr_::Call(Box::new(Expr_::Path(Path::Identifier("c".into()))), vec![])], usev: vec![], ret_ref: false,
-    }));
-    assert_eq!(process_expr(r#"(new Factory)->test"#), Expr_::ObjMember(Box::new(Expr_::New(Box::new(Expr_::Path(Path::Identifier("Factory".into()))), vec![])),
-        vec![Expr_::Path(Path::Identifier("test".into()))])
-    );
+        body: Block(vec![ enb!(None, Expr_::Call(eb!(14,15, Expr_::Path(Path::Identifier("c".into()))), vec![])) ]), usev: vec![], ret_ref: false,
+    })));
 }
-*/
+
+#[test]
+fn parse_expr_priority_parents_call() {
+    assert_eq!(process_expr("(new Factory)->test"), enb!(13,15, Expr_::ObjMember(eb!(1,4, Expr_::New(eb!(5,12, Expr_::Path(Path::Identifier("Factory".into()))), vec![])),
+        vec![ enb!(15,19, Expr_::Path(Path::Identifier("test".into()))) ]
+    )));
+    /*assert_eq!(process_expr("(new $obj)->method()"), enb!(None, Expr_::Call(eb!(10,12, Expr_::ObjMember(eb!(1,4, Expr_::New(eb!(5,9, Expr_::Variable("obj".into())), vec![])),
+        vec![ enb!(12,18, Expr_::Path(Path::Identifier("method".into()))) ]
+    )), vec![])));*/
+}
+
