@@ -55,7 +55,6 @@ pub enum Op {
     BitwiseExclOr,
     /// spaceship operator, <=>
     Spaceship,
-    Instanceof,
     Sl,
     Sr,
 }
@@ -127,6 +126,7 @@ pub enum Expr_ {
     New(Box<Expr>, Vec<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
     BinaryOp(Op, Box<Expr>, Box<Expr>),
+    InstanceOf(Box<Expr>, Box<Expr>),
     Cast(Ty, Box<Expr>),
     Function(FunctionDecl),
 
@@ -143,7 +143,7 @@ pub enum Expr_ {
     DoWhile(Box<Expr>, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
     For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Box<Expr>),
-    ForEach(Box<Expr>, Box<Expr>, Box<Expr>, Box<Expr>),
+    ForEach(Box<Expr>, Option<Box<Expr>>, Box<Expr>, Box<Expr>),
     /// Try(TryBlock, CatchClauses, FinallyClause)
     Try(Box<Expr>, Vec<CatchClause>, Box<Expr>),
 

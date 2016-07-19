@@ -61,6 +61,7 @@ enum Precedence {
     Add,
     Mul,
     Pow,
+    InstanceOf,
     Unary,
 }
 
@@ -95,6 +96,7 @@ impl Token {
             Token::Mul | Token::Div | Token::Mod => Precedence::Mul,
             Token::Pow => Precedence::Pow,
             Token::QuestionMark => Precedence::Conditional,
+            Token::InstanceOf => Precedence::InstanceOf,
             _ => return None,
         })
     }
@@ -232,9 +234,20 @@ impl Parser {
             let expr_ternary_if = try!(self.parse_opt_expression(new_precedence));
             if_lookahead!(self, Token::Colon, _token, {}, { return Err(()); });
             let expr_ternary_else = try!(self.parse_expression(new_precedence));
-            // TODO: using Break(0) is a hack here, get rid of the mem::replace somehow
             let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
             *left = Expr(Expr_::TernaryIf(tmp, expr_ternary_if.map(|x| Box::new(x)), Box::new(expr_ternary_else)), Span::new());
+            return Ok(true);
+        }
+
+        // also try to match instanceof (non associative!)
+        if let Token::InstanceOf = op_token.0 {
+            if let Expr(Expr_::InstanceOf(_, _), _) = *left {
+                // TODO: throw an error due to the non-associative nature
+                unreachable!();
+            }
+            let right = try!(self.parse_class_name_reference());
+            let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
+            *left = Expr(Expr_::InstanceOf(tmp, Box::new(right)), op_token.1);
             return Ok(true);
         }
 
@@ -246,7 +259,7 @@ impl Parser {
             Associativity::Left => new_precedence,
         };
         let right = try!(self.parse_expression(new_precedence));
-        // TODO: using Break(0) is a hack here, get rid of the mem::replace somehow
+        // TODO: using Break(0) is a hack here (and above), get rid of the mem::replace somehow
         let tmp = Box::new(mem::replace(left, Expr(Expr_::Break(None), Span::new())));
         *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), op_token.1);
         Ok(true)
@@ -789,6 +802,10 @@ impl Parser {
         Ok(pairs)
     }
 
+    fn parse_foreach_variable(&mut self) -> Result<Expr, ()> {
+        self.parse_variable()
+    }
+
     fn parse_statement(&mut self) -> Result<Expr, ()> {
         // parse a block: { statements }
         if_lookahead!(self, Token::CurlyBracesOpen, token, {
@@ -803,9 +820,24 @@ impl Parser {
             let end_pos = if_lookahead!(self, Token::CurlyBracesClose, token, token.1.end, { return Err(()); });
             return Ok(Expr(Expr_::Block(block), mk_span(token.1.start as usize, end_pos as usize)));
         });
+        // parse a foreach statement
+        if_lookahead!(self, Token::Foreach, token, {
+            if_lookahead!(self, Token::ParenthesesOpen, _tok, {}, { return Err(()); });
+            let expr = try!(self.parse_expression(Precedence::None));
+            if_lookahead!(self, Token::As, _tok, {}, { return Err(()); });
+            let key_or_v = Box::new(try!(self.parse_foreach_variable()));
+            let (key, value) = if_lookahead!(self, Token::DoubleArrow, _tok,
+                { (Some(key_or_v), Box::new(try!(self.parse_foreach_variable()))) },
+                { (None, key_or_v) }
+            );
+            if_lookahead!(self, Token::ParenthesesClose, _tok, {}, { return Err(()); });
+            let body = Box::new(try!(self.parse_statement()));
+            let span = mk_span(token.1.start as usize, body.1.end as usize);
+            return Ok(Expr(Expr_::ForEach(Box::new(expr), key, value, body), span));
+        });
         // parse a for statement
         if_lookahead!(self, Token::For, token, {
-            if_lookahead!(self, Token::ParenthesesOpen, open_for, {}, { return Err(()); });
+            if_lookahead!(self, Token::ParenthesesOpen, _tok, {}, { return Err(()); });
             let mut stmts = [None, None, None];
             let mut i = 0;
             while {
@@ -925,7 +957,12 @@ impl Parser {
         for tok in toks.into_iter() {
             match tok.0 {
                 // TODO: pass doc comment in the span on (don't ignore them)
-                Token::Comment(_) | Token::InlineHtml(_) | Token::OpenTag => (),
+                Token::Comment(_) | Token::OpenTag | Token::CloseTag => (),
+                Token::InlineHtml(str_) => tokens.extend(vec![
+                    TokenSpan(Token::Echo, Span::new()),
+                    TokenSpan(Token::ConstantEncapsedString(str_), tok.1),
+                    TokenSpan(Token::SemiColon, Span::new()),
+                ]),
                 Token::OpenTagWithEcho => tokens.push(TokenSpan(Token::Echo, tok.1)),
                 _ => tokens.push(tok),
             }
@@ -934,9 +971,11 @@ impl Parser {
         let mut p = Parser::new(tokens, interner);
         // error handling..
         let mut exprs = vec![];
-        match p.parse_top_statement() {
-            Ok(x) => exprs.push(x),
-            Err(x) => println!("parse_tokens: err: {:?}", x),
+        loop {
+            match p.parse_top_statement() {
+                Ok(x) => exprs.push(x),
+                Err(_) => break,
+            }
         }
         exprs
     }

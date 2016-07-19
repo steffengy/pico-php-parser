@@ -19,6 +19,7 @@ enum State {
     InScripting,
     LookingForProperty,
     EmitQueue,
+    Done,
 }
 
 pub struct Tokenizer<'a> {
@@ -787,6 +788,7 @@ impl<'a> Tokenizer<'a> {
     pub fn next_token(&mut self) -> Result<TokenSpan, SyntaxError> {
         loop {
             let ret = match self.state.state {
+                State::Done => Err(SyntaxError::None),
                 State::Initial => self.initial_token(),
                 State::InScripting => self.in_scripting_token(),
                 State::LookingForProperty => self.looking_for_property_token(),
@@ -814,9 +816,9 @@ impl<'a> Tokenizer<'a> {
     }
 
     /// token scanner for initial-state
-    /// TODO: maybe optimize me
     fn initial_token(&mut self) -> Result<TokenSpan, SyntaxError> {
-        if self.input().len() < 2 {
+        if self.input().is_empty() {
+            self.state.state = State::Done;
             return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
         }
         ret_token!(match_token!(self, "<?=", OpenTagWithEcho, state = InScripting));
@@ -829,24 +831,23 @@ impl<'a> Tokenizer<'a> {
         {
             let mut input = self.input();
             loop {
-                match input.find("<?") {
-                    None => break,
-                    Some(x) => {
-                        let is_php_tag = if self.short_tags { true } else {
-                            input[x+2..].starts_with("=") ||
-                            input[x+2..].starts_with("php")
-                        };
-                        if is_php_tag {
-                            end_pos += x;
-                            break
-                        }
-                        input = &input[x+2..]
-                    }
+                let (is_php_tag, next_pos) = match input.find("<?") {
+                    None => (false, input.len()),
+                    Some(x) => (true, x),
+                };
+                let is_php_tag = if is_php_tag && self.short_tags { true } else {
+                    input.starts_with("<?=") || input.starts_with("<?php")
+                };
+                if is_php_tag || next_pos == input.len() {
+                    end_pos += next_pos;
+                    break
                 }
+                // move on (skip) on <? with short-tags disabled and no PHP "open-suffix" (= or php)
+                input = &input[next_pos+2..];
             }
         }
         if end_pos != 0 {
-            let span = mk_span(self.input_pos(), end_pos);
+            let span = mk_span(self.input_pos(), self.input_pos() + end_pos);
             let str_ = self.advance(end_pos);
             return Ok(TokenSpan(Token::InlineHtml(self.interner.intern(str_)), span));
         }
@@ -901,10 +902,10 @@ impl<'a> Tokenizer<'a> {
         ret_token!(match_token!(self, "while",  While));
         ret_token!(match_token!(self, "endwhile",  EndWhile));
         ret_token!(match_token!(self, "do",  Do));
-        ret_token!(match_token!(self, "for",  For));
-        ret_token!(match_token!(self, "endfor",  Endfor));
         ret_token!(match_token!(self, "foreach",  Foreach));
         ret_token!(match_token!(self, "endforeach",  EndForeach));
+        ret_token!(match_token!(self, "for",  For));
+        ret_token!(match_token!(self, "endfor",  Endfor));
         ret_token!(match_token!(self, "declare",  Declare));
         ret_token!(match_token!(self, "enddeclare",  EndDeclare));
         ret_token!(match_token!(self, "instanceof",  InstanceOf));
