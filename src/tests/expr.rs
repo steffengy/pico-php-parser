@@ -2,7 +2,7 @@ use parser::*;
 
 fn process_expr(input: &str) -> Expr {
     let str_ = "<?php ".to_owned() + input + ";";
-    let mut result = Parser::parse_str(&str_);
+    let mut result = Parser::parse_str(&str_).unwrap();
     assert_eq!(result.len(), 1);
     result.pop().unwrap()
 }

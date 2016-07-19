@@ -1,6 +1,7 @@
 //! tokenizer based on https://github.com/php/php-src/blob/ebb99a1a3a2ec9216d95c63b267ae0f66074f4de/Zend/zend_language_scanner.l
 //! since the reference doesn't seem very correct in some cases
 use std::str::{self, FromStr};
+use std::ops::Deref;
 use std::mem;
 
 use interner::Interner;
@@ -26,38 +27,78 @@ pub struct Tokenizer<'a> {
     code: &'a str,
     /// whether to support short tags, equal to CG(short_tags)
     short_tags: bool,
-    state: TokenizerState,
+    pub state: TokenizerState,
     queue: Vec<TokenSpan>,
     interner: Interner,
 }
 
+#[derive(Clone, Debug)]
+pub struct LineMap {
+    data: Vec<u32>,
+    end_pos: usize,
+}
+
+impl LineMap {
+    fn new() -> LineMap {
+        LineMap {
+            data: vec![0],
+            end_pos: 0,
+        }
+    }
+
+    pub fn line_from_position(&self, pos: usize) -> usize {
+        let mut b = self.data.len();
+        let mut a = 0;
+        while b - a > 1 {
+            let mid = (a + b) / 2;
+            if self.data[mid] as usize > pos { b = mid; } else { a = mid; }
+        }
+        a
+    }
+
+    pub fn line(&self, line: usize) -> (u32, u32) {
+        let end = if line+1 < self.data.len() { self.data[line+1] } else {
+            self.end_pos as u32
+        };
+        (self.data[line], end)
+    }
+
+    #[inline]
+    pub fn push(&mut self, pos: u32) {
+        self.data.push(pos);
+    }
+}
+
+/// stuff that's also important for the parser
 #[derive(Debug, Clone)]
-struct TokenizerState {
+pub struct TokenizerExternalState {
+    /// contains the first byte-position of every line
+    pub line_map: LineMap,
+}
+
+impl TokenizerExternalState {
+    fn new() -> TokenizerExternalState {
+        TokenizerExternalState {
+            line_map: LineMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenizerState {
     src_pos: usize,
     state: State,
     state_stack: Vec<State>,
     line_num: usize,
-    /// contains the first byte-position of every line
-    line_map: Vec<u32>,
+    pub external: TokenizerExternalState,
     restart: bool,
 }
 
 impl TokenizerState {
     #[inline]
     fn next_line(&mut self) {
-        self.line_map.push(self.src_pos as u32);
+        self.external.line_map.push(self.src_pos as u32);
         self.line_num += 1;
-    }
-
-    fn line_from_position(&self, pos: usize) -> usize {
-        println!("{:?}", self.line_map);
-        let mut b = self.line_map.len();
-        let mut a = 0;
-        while b - a > 1 {
-            let mid = (a + b) / 2;
-            if self.line_map[mid] as usize > pos { b = mid; } else { a = mid; }
-        }
-        a
     }
 }
 
@@ -123,25 +164,27 @@ macro_rules! ret_token {
 /// helper to transform string-members into the appropriate token
 impl<'a> Tokenizer<'a> {
     pub fn new(src: &'a str) -> Tokenizer<'a> {
-        Tokenizer {
+        let mut tokenizer = Tokenizer {
             code: src,
             state: TokenizerState {
                 src_pos: 0,
                 state: State::Initial,
                 state_stack: vec![],
                 line_num: 1,
-                line_map: vec![0],
+                external: TokenizerExternalState::new(),
                 restart: false,
             },
             short_tags: true,
             queue: vec![],
             interner: Interner::new(),
-        }
+        };
+        tokenizer.state.external.line_map.end_pos = src.len();
+        tokenizer
     }
 
     #[inline]
-    pub fn into_interner(self) -> Interner {
-        self.interner
+    pub fn into_external_state(self) -> (Interner, TokenizerExternalState) {
+        (self.interner, self.state.external)
     }
 
     /// advances by n-positions where a position is a char-index
@@ -240,7 +283,7 @@ impl<'a> Tokenizer<'a> {
     /// matches a token which consists of one character (simple)
     fn _token(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().is_empty() {
-            return Err(SyntaxError::None);
+            return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
         }
         let tok = match self.input().chars().nth(0).unwrap() {
             ';' => Token::SemiColon,
@@ -277,7 +320,7 @@ impl<'a> Tokenizer<'a> {
     fn _dnum_lnum(&mut self) -> Result<TokenSpan, SyntaxError> {
         // valid inputs for double: "long.", ".long", "long.long"
         if self.input().is_empty() {
-            return Err(SyntaxError::None);
+            return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
         }
         let end_pos = match self.input().chars().position(|x| x < '0' || x > '9') {
             None => self.input().len(),
@@ -851,14 +894,14 @@ impl<'a> Tokenizer<'a> {
             let str_ = self.advance(end_pos);
             return Ok(TokenSpan(Token::InlineHtml(self.interner.intern(str_)), span));
         }
-        Err(SyntaxError::None)
+        Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())))
     }
 
     /// token scanner for script-seciton
     fn in_scripting_token(&mut self) -> Result<TokenSpan, SyntaxError> {
         // check if we are at the end of the input
         if self.input().is_empty() {
-            return Err(SyntaxError::None)
+            return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())))
         }
         self.whitespace();
         ret_token!(self.match_variable());
@@ -1234,7 +1277,7 @@ mod tests {
                 assert_eq!(tokenizer.state.line_num, 4);
                 assert_eq!(comment, " test ".into());
                 println!("{:?}", span);
-                assert_eq!(tokenizer.state.line_from_position(span.start as usize), 4 - 1); //0-based lines
+                assert_eq!(tokenizer.state.external.line_map.line_from_position(span.start as usize), 4 - 1); //0-based lines
             },
             _ => {assert!(false);},
         }

@@ -32,6 +32,16 @@ pub enum SyntaxError {
     UnknownCharacter(Span),
 }
 
+impl SyntaxError {
+    pub fn span(&self) -> Span {
+        match *self {
+            SyntaxError::None => unimplemented!(),
+            SyntaxError::Unterminated(_, ref span) => span.clone(),
+            SyntaxError::UnknownCharacter(ref span) => span.clone(),
+        }
+    }
+}
+
 #[allow(dead_code)] //TODO: remove some day
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {

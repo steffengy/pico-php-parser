@@ -1,7 +1,7 @@
 use parser::*;
 
 fn process_script(input: &str) -> Vec<Expr> {
-    Parser::parse_str(&input)
+    Parser::parse_str(&input).unwrap()
 }
 
 #[test]
