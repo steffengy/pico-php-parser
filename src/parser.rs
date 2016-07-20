@@ -635,7 +635,7 @@ impl Parser {
         (params, None)
     }
 
-    fn parse_function_declaration(&mut self, span: Span, parse_closure: bool) -> Result<Expr, ParserError> {
+    fn parse_function_declaration(&mut self, span: Span, parse_closure: bool, allow_abstract: bool) -> Result<Expr, ParserError> {
         //TODO: doc_comment
         let returns_ref = self.parse_is_ref();
         let name = match parse_closure {
@@ -652,13 +652,22 @@ impl Parser {
         if_lookahead!(self, Token::ParenthesesClose, _tok, {}, return Err(params_err.unwrap()));
         // TODO: lexical_vars (use)
         // TODO: return_type
-        if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
-        let (body, stmts_err) = self.parse_inner_statement_list();
-        let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, {
-            if let Some(err) = stmts_err {
-                return Err(err)
-            }
-        });
+        let (no_body, mut end_pos) = match allow_abstract {
+            true => if_lookahead!(self, Token::SemiColon, token, (true, token.1.end), (false, 0)),
+            false => (false, 0)
+        };
+        let (body, stmts_err) = if !no_body {
+            if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
+            let (body, stmts_err) = self.parse_inner_statement_list();
+            end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, {
+                if let Some(err) = stmts_err {
+                    return Err(err)
+                }
+            });
+            (body, stmts_err)
+        } else {
+            (vec![], None, )
+        };
         let decl = FunctionDecl {
             params: params,
             body: Block(body),
@@ -672,42 +681,75 @@ impl Parser {
         }, span))
     }
 
-    fn parse_class_declaration(&mut self) -> Result<Expr, ParserError> {
+    /// parses a class or trait declaration
+    fn parse_oo_declaration(&mut self) -> Result<Expr, ParserError> {
         let old_pos = self.pos;
-        let mut class_modifiers = vec![];
-        let start_pos = 0;
-        loop {
-            if_lookahead!(self, Token::Abstract, _tok, { class_modifiers.push(ClassModifier::Abstract); continue; });
-            if_lookahead!(self, Token::Final, _tok, { class_modifiers.push(ClassModifier::Final); continue; });
-            break;
+        enum OoType {
+            Class,
+            Trait,
+            Interface,
         }
-        let start_pos = self.tokens[self.pos - class_modifiers.len()].1.start;
-        if_lookahead_expect!(self, Token::Class, Token::Class);
+        let oo_type = if_lookahead!(self, Token::Trait, _tok, OoType::Trait, if_lookahead!(self, Token::Interface, _tok, OoType::Interface, OoType::Class));
+
+        let mut class_modifiers = vec![];
+        // only a class has modifiers (and a class token ofcourse)
+        if let OoType::Class = oo_type {
+            loop {
+                if_lookahead!(self, Token::Abstract, _tok, { class_modifiers.push(ClassModifier::Abstract); continue; });
+                if_lookahead!(self, Token::Final, _tok, { class_modifiers.push(ClassModifier::Final); continue; });
+                break;
+            }
+            if_lookahead_expect!(self, Token::Class, Token::Class);
+        }
+        let start_pos = self.tokens[self.pos - 1 - class_modifiers.len()].1.start;
         let name = if_lookahead_expect!(self, Token::String(_), Token::String(self.interner.intern("")), token, match token.0 {
             Token::String(str_) => str_,
             _ => unreachable!(),
         });
-        let extends = if_lookahead!(self, Token::Extends, _tok, Some(match try!(self.parse_name()).0 {
-            Expr_::Path(path) => path,
-            _ => unreachable!(),
-        }), None);
-        let implements = if_lookahead!(self, Token::Implements, _tok, try!(self.parse_name_list()).into_iter().map(|x| match x.0 {
-            Expr_::Path(path) => path,
-            _ => unreachable!(),
-        }).collect(), vec![]);
+        // extends are only valid for interfaces and classes
+        let extends = match oo_type {
+            OoType::Class => if_lookahead!(self, Token::Extends, _tok, Some(match try!(self.parse_name()).0 {
+                Expr_::Path(path) => path,
+                _ => unreachable!(),
+            }), None),
+            _ => None,
+        };
+        // implements = extended interfaces (equals to implements clause for classes and extends for interfaces)
+        let implements_token = match oo_type {
+            OoType::Class => Some(Token::Implements),
+            OoType::Interface => Some(Token::Extends),
+            _ => None,
+        };
+        let implements = match implements_token {
+            Some(itoken) => if let Some(r_token) = self.next_token().map(|x| x.0.clone()) {
+                if r_token == itoken {
+                    self.advance(1);
+                    try!(self.parse_name_list()).into_iter().map(|x| match x.0 {
+                        Expr_::Path(path) => path,
+                        _ => unreachable!(),
+                    }).collect()
+                } else { vec![] }
+            } else { vec![] },
+            _ => vec![],
+        };
         if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
         let (members, err) = self.parse_class_statement_list();
         let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, token, token.1.end, if let Some(err) = err {
             return Err(err);
         });
         let span = mk_span(start_pos as usize, end_pos as usize);
-        return Ok(Expr(Expr_::Decl(Decl::Class(ClassDecl {
-            cmod: ClassModifiers::new(&class_modifiers),
-            name: name,
-            base_class: extends,
-            implements: implements,
-            members: members,
-        })), span));
+        let ret_expr = match oo_type {
+            OoType::Class => Expr_::Decl(Decl::Class(ClassDecl {
+                cmod: ClassModifiers::new(&class_modifiers),
+                name: name,
+                base_class: extends,
+                implements: implements,
+                members: members,
+            })),
+            OoType::Interface => Expr_::Decl(Decl::Interface(name, implements, members)),
+            OoType::Trait => Expr_::Decl(Decl::Trait(name, members)),
+        };
+        return Ok(Expr(ret_expr, span));
     }
 
     /// parsing all expressions after the precedence applying (stage 2 "callback")
@@ -743,7 +785,7 @@ impl Parser {
         });
         // function declaration (anonymous function)
         if_lookahead!(self, Token::Function, token, {
-            return self.parse_function_declaration(token.1, true);
+            return self.parse_function_declaration(token.1, true, false);
         });
         // internal_functions_in_yacc / casts
         let ret = match self.next_token() {
@@ -1282,9 +1324,9 @@ impl Parser {
         }
         // function declaration statement
         if_lookahead_restore!(self, Token::Function, token, {
-            deepest!(deepest_err, self.parse_function_declaration(token.1, false));
+            deepest!(deepest_err, self.parse_function_declaration(token.1, false, false));
         });
-        deepest!(deepest_err, self.parse_class_declaration());
+        deepest!(deepest_err, self.parse_oo_declaration());
 
         // parse other statements
         deepest!(deepest_err, match self.next_token().map(|x| x.clone()) {
@@ -1383,7 +1425,7 @@ impl Parser {
                 unimplemented!();
             });
             if_lookahead!(self, Token::Function, token, {
-                let (name, decl) = match try!(self.parse_function_declaration(token.1, false)).0 {
+                let (name, decl) = match try!(self.parse_function_declaration(token.1, false, true)).0 {
                     Expr_::Decl(Decl::GlobalFunction(name, decl)) => (name, decl),
                     _ => unreachable!(),
                 };
