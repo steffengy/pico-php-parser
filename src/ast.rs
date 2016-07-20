@@ -240,8 +240,8 @@ pub enum IncludeTy {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TraitUse {
-    InsteadOf((Path, Path), Vec<Path>),
-    As((Path, Path), Visibility, Option<RcStr>),
+    InsteadOf(Path, RcStr, Vec<Path>),
+    As(Path, RcStr, MemberModifiers, Option<RcStr>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -260,7 +260,8 @@ pub struct FunctionDecl {
     pub body: Block,
     /// A list of variables to pass from the parent scope to the scope of this function
     /// So variables which are basically available shared into this function's scope
-    pub usev: Vec<RcStr>,
+    /// the boolean indicates whether to bind by-reference (true)
+    pub usev: Vec<(bool, RcStr)>,
     pub ret_ref: bool,
 }
 
@@ -284,12 +285,12 @@ pub enum Member {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl {
-    Namespace(Vec<RcStr>),
+    Namespace(Path),
     GlobalFunction(RcStr, FunctionDecl),
     Class(ClassDecl),
     Interface(RcStr, Vec<Path>, Vec<Member>),
     Trait(RcStr, Vec<Member>),
-    StaticVars(Vec<(RcStr, Expr)>),
+    StaticVars(Vec<(RcStr, Option<Expr>)>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

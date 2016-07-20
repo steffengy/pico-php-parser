@@ -377,7 +377,6 @@ fn parse_interface_decl() {
     )));
 }
 
-/*
 
 #[test]
 fn parse_class_use_trait_complex() {
@@ -389,31 +388,30 @@ fn parse_class_use_trait_complex() {
             B::bigTalk as talk;
         }
     }";
-    assert_eq!(process_stmt(code), Expr_::Decl(Decl::Class(ClassDecl {
-        cmod: ClassModifier::None, name: "Aliased_Talker".into(), base_class: None, implements: vec![], members: vec![
-            ClassMember::TraitUse(vec![Path::Identifier("A".into()), Path::Identifier("B".into())], vec![
-                TraitUse::InsteadOf( (Path::Identifier("B".into()), Path::Identifier("smallTalk".into())), vec![Path::Identifier("A".into())] ),
-                TraitUse::InsteadOf( (Path::Identifier("A".into()), Path::Identifier("bigTalk".into())), vec![Path::Identifier("B".into())] ),
-                TraitUse::As( (Path::Identifier("B".into()), Path::Identifier("bigTalk".into())), Visibility::None, Some("talk".into()) ),
+    assert_eq!(process_stmt(code), enb!(0,163, Expr_::Decl(Decl::Class(ClassDecl {
+        cmod: ClassModifiers::none(), name: "Aliased_Talker".into(), base_class: None, implements: vec![], members: vec![
+            Member::TraitUse(vec![Path::Identifier("A".into()), Path::Identifier("B".into())], vec![
+                TraitUse::InsteadOf(Path::Identifier("B".into()), "smallTalk".into(), vec![Path::Identifier("A".into())]),
+                TraitUse::InsteadOf(Path::Identifier("A".into()), "bigTalk".into(), vec![Path::Identifier("B".into())]),
+                TraitUse::As(Path::Identifier("B".into()), "bigTalk".into(), MemberModifiers::none(), Some("talk".into())),
             ])
         ]
-    })));
-}
-
-#[test]
-fn parse_static_decl() {
-    assert_eq!(process_stmt("static $t=true;"), Expr_::Decl(Decl::StaticVars(vec![("t".into(), Expr_::True)])));
-}
-
-#[test]
-fn parse_stmt_closure_use() {
-    assert_eq!(process_stmt("return function () use ($t) {};"), Expr_::Return(Box::new(Expr_::Function(FunctionDecl {
-        params: vec![], body: vec![], usev: vec!["t".into()], ret_ref: false,
     }))));
 }
 
 #[test]
-fn parse_namespace_decl() {
-    assert_eq!(process_stmt("namespace Foo\\Bar;"), Expr_::Decl(Decl::Namespace(vec!["Foo".into(), "Bar".into()])));
+fn parse_static_decl() {
+    assert_eq!(process_stmt("static $t=true;"), enb!(0,14, Expr_::Decl(Decl::StaticVars(vec![ ("t".into(), Some(enb!(10,14, constant!(true)))) ]))));
 }
-*/
+
+#[test]
+fn parse_stmt_closure_use() {
+    assert_eq!(process_stmt("return function () use ($t) {};"), enb!(0,6, Expr_::Return(Some(eb!(7,30, Expr_::Function(FunctionDecl {
+        params: vec![], body: Block(vec![]), usev: vec![(false, "t".into())], ret_ref: false,
+    }))))));
+}
+
+#[test]
+fn parse_namespace_decl() {
+    assert_eq!(process_stmt("namespace Foo\\Bar;"), enb!(0,17, Expr_::Decl(Decl::Namespace(Path::NsIdentifier("Foo".into(), "Bar".into())))));
+}
