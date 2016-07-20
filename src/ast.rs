@@ -82,16 +82,65 @@ pub enum Visibility {
     Protected
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ClassModifier {
-    None,
     Abstract,
     Final,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ClassModifiers(u8);
+
+impl ClassModifiers {
+    pub fn none() -> ClassModifiers {
+        ClassModifiers(0)
+    }
+
+    pub fn new(cms: &[ClassModifier]) -> ClassModifiers {
+        let mut flag = 0;
+        for modifier in cms {
+            flag |= *modifier as u8;
+        }
+        ClassModifiers(flag)
+    }
+
+    #[inline]
+    pub fn has(&self, m: &ClassModifier) -> bool {
+        return self.0 & (*m as u8) != 0;
+    }
+}
+
 /// the boolean indicates whether the underlying item is static or not
-#[derive(Clone, Debug, PartialEq)]
-pub struct Modifiers(pub bool, pub Visibility, pub ClassModifier);
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum MemberModifier {
+    None = 1<<0,
+    Public = 1<<1,
+    Protected = 1<<2,
+    Private = 1<<3,
+    Static = 1<<4,
+    Abstract = 1<<5,
+    Final = 1<<6,
+}
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct MemberModifiers(u8);
+
+impl MemberModifiers {
+    pub fn none() -> MemberModifiers {
+        MemberModifiers(0)
+    }
+
+    pub fn new(ms: &[MemberModifier]) -> MemberModifiers {
+        let mut flag = 0;
+        for modifier in ms {
+            flag |= *modifier as u8;
+        }
+        MemberModifiers(flag)
+    }
+
+    pub fn has(&self, m: &MemberModifier) -> bool {
+        return self.0 & (*m as u8) != 0
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr(pub Expr_, pub Span);
@@ -139,7 +188,7 @@ pub enum Expr_ {
     /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
     CompoundAssign(Box<Expr>, Op, Box<Expr>),
     AssignRef(Box<Expr>, Box<Expr>),
-    List(Vec<(Expr, Expr)>),
+    List(Vec<(Option<Expr>, Expr)>),
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     While(Box<Expr>, Box<Expr>),
@@ -154,7 +203,7 @@ pub enum Expr_ {
     /// All item-cases for a body will be included in the first-member Vec
     /// so basically we have a mapping from all-cases -> body in .1
     /// TODO: should be desugared into an if-statement
-    Switch(Box<Expr>, Vec<(Block, Expr)>),
+    Switch(Box<Expr>, Vec<SwitchCase>),
 
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used
@@ -174,8 +223,12 @@ pub enum Ty {
     Int,
     Double,
     String,
-    Object,
+    Object(Option<Path>),
 }
+
+/// A type and flag describing whether it's nullable
+#[derive(Clone, Debug, PartialEq)]
+pub struct NullableTy(pub Ty, pub bool);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum IncludeTy {
@@ -213,19 +266,19 @@ pub struct FunctionDecl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassDecl {
-    pub cmod: ClassModifier,
+    pub cmod: ClassModifiers,
     pub name: RcStr,
     pub base_class: Option<Path>,
     /// The implemented interfaces of this class
     pub implements: Vec<Path>,
-    pub members: Vec<ClassMember>,
+    pub members: Vec<Member>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ClassMember {
-    Constant(RcStr, Expr),
-    Property(Modifiers, RcStr, Expr),
-    Method(Modifiers, RcStr, FunctionDecl),
+pub enum Member {
+    Constant(MemberModifiers, RcStr, Expr),
+    Property(MemberModifiers, RcStr, Option<Expr>),
+    Method(MemberModifiers, RcStr, FunctionDecl),
     TraitUse(Vec<Path>, Vec<TraitUse>),
 }
 
@@ -234,8 +287,8 @@ pub enum Decl {
     Namespace(Vec<RcStr>),
     GlobalFunction(RcStr, FunctionDecl),
     Class(ClassDecl),
-    Interface(RcStr, Vec<Path>, Vec<ClassMember>),
-    Trait(RcStr, Vec<ClassMember>),
+    Interface(RcStr, Vec<Path>, Vec<Member>),
+    Trait(RcStr, Vec<Member>),
     StaticVars(Vec<(RcStr, Expr)>),
 }
 
@@ -243,5 +296,12 @@ pub enum Decl {
 pub struct CatchClause {
     pub ty: Path,
     pub var: RcStr,
+    pub block: Block,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwitchCase {
+    pub conds: Vec<Expr>,
+    pub default: bool,
     pub block: Block,
 }
