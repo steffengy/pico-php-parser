@@ -33,4 +33,5 @@ fn parse_simple_fn_decl() {
         ])
     ]);
 }
+
 // TEST invalid cases TODO: like <?php echo "test" (missing semicolon, should actually parse?)

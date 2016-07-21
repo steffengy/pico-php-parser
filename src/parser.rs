@@ -32,6 +32,12 @@ pub enum IdxExpr<'a> {
     StaticMember(Expr<'a>),
 }
 
+#[derive(Debug)]
+pub enum IdxExprUnary<'a> {
+    CompoundAssign(Op, Expr<'a>),
+    Assign(Expr<'a>),
+}
+
 /// (mostly) based on: https://github.com/php/php-langspec/commit/46a218a09ef6156e419194122a440e5400967fe2
 impl_rdp! {
     grammar! {
@@ -61,10 +67,6 @@ impl_rdp! {
         variable_name                   =  { ["$"] ~ name }
         name                            = @{ nondigit_silent ~ (digit_silent | nondigit_silent)* } //TODO: U+0080–U+00ff (name_nondigit)
 
-        //literal translation from reference: (does not work)
-        //namespace_name                = @{ name | (namespace_name ~ ["\\"] ~ name) }
-        //namespace_name_as_a_prefix    = @{ (["\\"]? ~ namespace_name ~ ["\\"]) | (["namespace"] ~ ["\\"] ~ (namespace_name ~ ["\\"])?) | ["\\"] }
-
         // This name_item allows parsing without consuming adjacent names (which do not belong to the container)
         // as in the case of e.g. qualified_name
         namespace_name_item             = @{ name }
@@ -76,7 +78,7 @@ impl_rdp! {
         qualified_name                  = @{ namespace_name_as_a_prefix? ~ name }
 
         // Section: Literals
-        literal                         = @{ integer_literal | floating_literal | string_literal }
+        literal                         = @{ string_literal | integer_literal | floating_literal }
         //        : Integer Literals
         integer_literal                 = @{ decimal_literal | octal_literal | hexacdecimal_literal | binary_literal }
         decimal_literal                 = @{ nonzero_digit_silent ~ digit_silent* }
@@ -118,13 +120,13 @@ impl_rdp! {
         property_in_string              = @{ ["->"] ~ name }
 
         // features nobody uses...
-        heredoc_string_literal          = @{ ["<<<"] ~ hd_start_identifier ~ new_line ~ hd_char* ~ new_line ~ hd_end_identifier ~ [";"]? ~ new_line }
+        heredoc_string_literal          = @{ ["<<<"] ~ hd_start_identifier ~ new_line ~ hd_chars* ~ new_line ~ hd_end_identifier ~ [";"]? ~ new_line }
         hd_start_identifier             = @{ name | (["\""] ~ name ~ ["\""]) }
         hd_end_identifier               = @{ name }
-        hd_char                         = @{ hd_escape_sequence | (!(["\\"]) ~ any) } // todo: incomplete, as above
+        hd_chars                        = @{ hd_escape_sequence | (!["\\"] ~ any)+ } // todo: incomplete, as above
         hd_escape_sequence              = @{ hd_simple_escape_sequence | dq_octal_escape_sequence | dq_hexadecimal_escape_sequence | dq_unicode_escape_sequence }
         hd_simple_escape_sequence       =  { ["\\\\"] | ["\\$"] | ["\\e"] | ["\\f"] | ["\\n"] | ["\\r"] | ["\\t"] | ["\\v"] }
-        nowdoc_string_literal           = @{ ["<<<"] ~ ["'"] ~ name ~ ["'"] ~ new_line ~ hd_char* ~ new_line ~ name ~ [";"]? ~ new_line }
+        nowdoc_string_literal           = @{ ["<<<"] ~ ["'"] ~ name ~ ["'"] ~ new_line ~ hd_chars* ~ new_line ~ name ~ [";"]? ~ new_line }
 
         // Section: Variables
         // http://php.net/manual/en/language.variables.scope.php
@@ -136,11 +138,11 @@ impl_rdp! {
         // Section: Expressions
         // In the reference this contains "constant_expression", we use "array_creation_expression" to prevent infinite recursion
         primary_expression              =  {
-            (["("] ~ assignment_expression ~ assignment_parents_end) | intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
+            (["("] ~ expression ~ expression_parents_end) | intrinsic | variable_name | constant | anonym_func_creation_expression | qualified_name | literal |
             array_creation_expression |
             ["$this"]
         }
-        assignment_parents_end          =  { [")"] }
+        expression_parents_end          =  { [")"] }
         // added to parse constants explicitly, not in reference
         constant                        =  { constant_true | constant_false | constant_null }
         constant_true                   =  { ["true"] }
@@ -158,7 +160,8 @@ impl_rdp! {
         expression_list_one_or_more     = _{ intrinsic_expression ~ ([","] ~ intrinsic_expression)* }
         // this safeguards from consuming too much, else we'd need an end_token, which is a bit tricky with the echo intrinsic
         intrinsic_expression            =  { expression }
-        list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ [")"] }
+        list_intrinsic                  =  { ["list"] ~ ["("] ~ list_expression_list? ~ list_intrinsic_end }
+        list_intrinsic_end              =  { [")"] }
         list_expression_list            =  {
             (list_or_variable | keyed_list_expression | list_item_empty) ~ (
                 [","] ~ (list_or_variable | keyed_list_expression | list_item_empty)
@@ -218,7 +221,7 @@ impl_rdp! {
         function_call                   =  { ["("] ~ argument_expression_list? ~ function_call_end }
         function_call_end               =  { [")"] }
         argument_expression_list        = _{ (argument_expression ~ ([","] ~ argument_expression)*) }
-        argument_expression             =  { variadic_unpacking | assignment_expression }
+        argument_expression             =  { variadic_unpacking | expression }
         variadic_unpacking              =  { ["..."] ~ assignment_expression }
         member_selection                =  { ["->"] ~ member_selection_designator }
         //TODO: use var_name_creation_expression insteadof variable_name?
@@ -241,7 +244,7 @@ impl_rdp! {
             shell_command_expression | var_name_creation_expression
         }
         unary_expression                =  {
-            unary_expression_internal ~ instanceof_expression?
+            (unary_expression_internal ~ (assignment_appendix+ | instanceof_expression?))
         }
         unary_operator                  =  { op_add | op_sub | op_not | op_bitwise_not }
         error_control_expression        =  { ["@"] ~ expression }
@@ -315,33 +318,30 @@ impl_rdp! {
         ternary_else                    =  { [":"] }
 
         // Section: Coalesce Operator (TODO: in the documentation it's logical-inc-OR-expression, which doesn't exist. typo?)
-        coalesce_expression            =  { binary_expression ~ ["??"] ~ expression }
+        coalesce_expression            =   { binary_expression ~ ["??"] ~ expression }
 
         // Section: Assignment Operators
-        assignment_expression          =  {
-            (unary_operator* ~ (coalesce_expression | byref_assignment_expression | simple_assignment_expression | compound_assignment_expression | ternary_expression)) |
-            binary_expression
+        assignment_appendix            =   { (["="] | compound_assignment_operator) ~ expression }
+        assignment_expression          =   {
+            coalesce_expression | ternary_expression | binary_expression
         }
-        simple_assignment_expression   =  { unary_expression ~ ["="] ~ assignment_expression }
-        byref_assignment_expression    =  { unary_expression ~ ["="] ~ ["&"] ~ assignment_expression }
-        compound_assignment_expression =  { unary_expression ~ compound_assignment_operator ~ assignment_expression }
-        compound_assignment_operator   =  {
+        compound_assignment_operator   =   {
             compound_op_pow | compound_op_mul | compound_op_div | compound_op_mod | compound_op_add | compound_op_sub |
             compound_op_concat | compound_op_shl | compound_op_shr | compound_op_and | compound_op_xor | compound_op_or
         }
-        compound_op_pow                =  { ["**="] }
-        compound_op_mul                =  { ["*="] }
-        compound_op_div                =  { ["/="] }
-        compound_op_mod                =  { ["%="] }
-        compound_op_add                =  { ["+="] }
-        compound_op_sub                =  { ["-="] }
-        compound_op_concat             =  { [".="] }
-        compound_op_shl                =  { ["<<="] }
-        compound_op_shr                =  { [">>="] }
+        compound_op_pow                =   { ["**="] }
+        compound_op_mul                =   { ["*="] }
+        compound_op_div                =   { ["/="] }
+        compound_op_mod                =   { ["%="] }
+        compound_op_add                =   { ["+="] }
+        compound_op_sub                =   { ["-="] }
+        compound_op_concat             =   { [".="] }
+        compound_op_shl                =   { ["<<="] }
+        compound_op_shr                =   { [">>="] }
         // compound bitwise-and
-        compound_op_and                =  { ["&="] }
-        compound_op_xor                =  { ["^="] }
-        compound_op_or                 =  { ["|="] }
+        compound_op_and                =   { ["&="] }
+        compound_op_xor                =   { ["^="] }
+        compound_op_or                 =   { ["|="] }
 
         // Section: Logical Operators (Form 2) - TODO: won't work, not ported yet, precedence wrong? (since after assignment?)
         /*logical_AND_expression_2        = {
@@ -628,32 +628,8 @@ impl_rdp! {
             (_: assignment_expression, e: _assignment_expression()) => e,
         }
 
-        _unary_operators(&self) -> LinkedList<UnaryOp> {
-            (_: unary_operator, op, mut next: _unary_operators()) => {
-                next.push_front(rule_to_unary_op(op.rule));
-                next
-            },
-            () => LinkedList::new(),
-        }
-
-        _assignment_expression_internal(&self) -> Result<Expr<'input>, ParseError> {
-            (_: simple_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
-                Ok(Expr::Assign(Box::new(try!(ex)), Box::new(try!(ae))))
-            },
-            (_: compound_assignment_expression, _: unary_expression, ex: _unary_expression(), _: compound_assignment_operator,
-                op, _: assignment_expression, ae: _assignment_expression()) => {
-                Ok(Expr::CompoundAssign(Box::new(try!(ex)), rule_to_op(op.rule), Box::new(try!(ae))))
-            },
-            (_: byref_assignment_expression, _: unary_expression, ex: _unary_expression(), _: assignment_expression, ae: _assignment_expression()) => {
-                Ok(Expr::AssignRef(Box::new(try!(ex)), Box::new(try!(ae))))
-            },
-            (e: _conditional_expression()) => e,
-        }
-
         _assignment_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (u: _unary_operators(), e: _assignment_expression_internal()) => {
-                Ok(u.into_iter().fold(try!(e), |res, op| Expr::UnaryOp(op, Box::new(res))))
-            }
+            (e: _conditional_expression()) => e,
         }
 
         _conditional_expression(&self) -> Result<Expr<'input>, ParseError> {
@@ -703,7 +679,7 @@ impl_rdp! {
             (_: exponentiation, left: _binary_expression(), _: op_pow, right: _binary_expression()) => {
                 Ok(Expr::BinaryOp(Op::Pow, Box::new(try!(left)), Box::new(try!(right))))
             },
-            (_: unary_expression, e: _unary_expression()) => e
+            (_: unary_expression, e: _unary_expression()) => e,
         }
 
         _optional_instanceof_expression(&self) -> Result<Expr<'input>, ParseError> {
@@ -716,14 +692,33 @@ impl_rdp! {
             () => Ok(Expr::None),
         }
 
+        _unary_expression_appendixes(&self) -> Result<LinkedList<IdxExprUnary<'input>>, ParseError> {
+            (_: assignment_appendix, _: compound_assignment_operator, op, _: expression, e: _expression(), next: _unary_expression_appendixes()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExprUnary::CompoundAssign(rule_to_op(op.rule), try!(e)));
+                Ok(next)
+            },
+            (_: assignment_appendix, _: expression, e: _expression(), next: _unary_expression_appendixes()) => {
+                let mut next = try!(next);
+                next.push_front(IdxExprUnary::Assign(try!(e)));
+                Ok(next)
+            },
+            () => Ok(LinkedList::new()),
+        }
+
         _unary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: postfix_expression, e: _postfix_expression(), o: _optional_instanceof_expression()) => {
-                let o = try!(o);
-                match o {
-                    Expr::None => e,
-                    Expr::BinaryOp(Op::Instanceof, _, ty) => Ok(Expr::BinaryOp(Op::Instanceof, Box::new(try!(e)), ty)),
+            (_: postfix_expression, e: _postfix_expression(), o: _optional_instanceof_expression(), uea: _unary_expression_appendixes()) => {
+                let o = match try!(o) {
+                    Expr::None => try!(e),
+                    Expr::BinaryOp(Op::Instanceof, _, ty) => Expr::BinaryOp(Op::Instanceof, Box::new(try!(e)), ty),
                     _ => unreachable!(),
-                }
+                };
+                Ok(try!(uea).into_iter().fold(o, |initial, elem| {
+                    match (initial, elem) {
+                        (a, IdxExprUnary::CompoundAssign(op, val)) => Expr::CompoundAssign(Box::new(a), op, Box::new(val)),
+                        (a, IdxExprUnary::Assign(val)) => Expr::Assign(Box::new(a), Box::new(val)),
+                    }
+                }))
             },
             (_: error_control_expression, _: expression, e: _expression()) => Ok(Expr::ErrorControl(Box::new(try!(e))))
         }
@@ -852,7 +847,7 @@ impl_rdp! {
 
         // extract call args
         _call_args(&self) -> Result<LinkedList<Expr<'input>>, ParseError> {
-            (_: argument_expression, _: assignment_expression, e: _assignment_expression(), next: _call_args()) => {
+            (_: argument_expression, _: expression, e: _expression(), next: _call_args()) => {
                 let mut next = try!(next);
                 let expr = try!(e);
                 next.push_front(expr);
@@ -876,7 +871,7 @@ impl_rdp! {
         }
 
         _primary_expression(&self) -> Result<Expr<'input>, ParseError> {
-            (_: assignment_expression, e: _assignment_expression(), _: assignment_parents_end) => e,
+            (_: expression, e: _expression(), _: expression_parents_end) => e,
             (_: intrinsic, i: _intrinsic()) => i,
             (_: anonym_func_creation_expression, ret_ref: _function_definition_return_ref(), params: _function_definition_params(), _: function_definition_param_end,
                 use_clause: _anonym_func_use_clause(), _: compound_statement, body: _multiple_statements(), _: compound_statement_end) => {
@@ -948,7 +943,7 @@ impl_rdp! {
         }
 
         _list_intrinsic(&self) -> Result<Expr<'input>, ParseError> {
-            (_: list_expression_list, items: _list_items()) => {
+            (_: list_expression_list, items: _list_items(), _: list_intrinsic_end) => {
                 Ok(Expr::List(try!(items).into_iter().collect()))
             }
         }

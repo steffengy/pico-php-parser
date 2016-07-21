@@ -40,6 +40,13 @@ fn parse_expr_parens() {
 }
 
 #[test]
+fn parse_expr_require() {
+    assert_eq!(process_expr("abc(require $path)"), Expr::Call(Box::new(Expr::Path(Path::Identifier("abc".into()))),
+        vec![Expr::Include(IncludeTy::Require, Box::new(Expr::Variable("path".into())))])
+    );
+}
+
+#[test]
 fn parse_expr_string() {
     assert_eq!(process_expr(r#""t\nest\tsss\"os\"haha""#), Expr::String("t\nest\tsss\"os\"haha".into()));
     assert_eq!(process_expr(r#""\xe7\x9a\x84""#), Expr::String("的".into()));
@@ -182,6 +189,9 @@ fn parse_expr_reference() {
 #[test]
 fn parse_expr_ternary() {
     assert_eq!(process_expr("$test?true:false"), Expr::TernaryIf(Box::new(Expr::Variable("test".into())), Box::new(Expr::True), Box::new(Expr::False)));
+    assert_eq!(process_expr("!$test?true:false"), Expr::TernaryIf(Box::new(Expr::UnaryOp(UnaryOp::Not,
+        Box::new(Expr::Variable("test".into())))), Box::new(Expr::True), Box::new(Expr::False))
+    );
 }
 
 #[test]

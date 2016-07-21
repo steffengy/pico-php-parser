@@ -60,6 +60,14 @@ fn parse_stmt_if_while() {
 }
 
 #[test]
+fn parse_stmt_if_assign() {
+    assert_eq!(process_stmt("if (! $a && $b = $c) { echo 1; }"), Expr::If(Box::new(Expr::BinaryOp(Op::And,
+        Box::new(Expr::UnaryOp(UnaryOp::Not, Box::new(Expr::Variable("a".into())))),
+        Box::new(Expr::Assign(Box::new(Expr::Variable("b".into())), Box::new(Expr::Variable("c".into())))))),
+    Box::new(Expr::Block(vec![Expr::Echo(vec![Expr::Int(1)])])), Box::new(Expr::None)));
+}
+
+#[test]
 fn parse_stmt_if_else() {
     let make_result = |block_expr, else_expr| Expr::If(Box::new(Expr::Variable("a".into())), Box::new(block_expr), Box::new(else_expr));
     let main_call_expr = Expr::Call(Box::new(Expr::Path(Path::Identifier("a".into()))), vec![]);
@@ -368,4 +376,14 @@ fn parse_stmt_new_as_param() {
 #[test]
 fn parse_stmt_new() {
     assert_eq!(process_stmt("return new $var($this);"), Expr::Return(Box::new(Expr::New(Box::new(Expr::Variable("var".into())), vec![Expr::Variable("this".into())]))));
+}
+
+#[test]
+fn parse_stmt_heredoc() {
+    let mut parser = Rdp::new(StringInput::new("<<<EOT\ntest\nEOT;\n"));
+    assert!(parser.heredoc_string_literal());
+    println!("{:?} @{}", parser.queue(), parser.input().pos());
+    assert!(parser.end());
+
+    assert_eq!(process_stmt("{ $g = <<<EOT\ntest\nEOT;\n$g; }"), Expr::Block(vec![]));
 }
