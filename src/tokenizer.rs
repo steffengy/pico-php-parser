@@ -754,6 +754,11 @@ impl<'a> Tokenizer<'a> {
                         if self.input().starts_with(';') {
                             self.advance(1);
                         }
+                        if !self.newline() {
+                            let old_pos = self.input_pos();
+                            self.state = bak_state_str;
+                            return Err(SyntaxError::Unterminated("Here/Nowdoc: end-tag requires to be followed by a newline", mk_span(self.state.src_pos, old_pos)));
+                        }
                         break
                     } else {
                         str_.push('\n');

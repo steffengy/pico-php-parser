@@ -1151,6 +1151,12 @@ impl Parser {
                     if_lookahead_expect!(self, Token::DoubleQuote, Token::DoubleQuote);
                     return Ok(ret);
                 },
+                Token::HereDocStart => {
+                    let mut ret = try!(self.parse_encaps_list());
+                    ret.1.start = x.1.start;
+                    ret.1.end = if_lookahead_expect!(self, Token::HereDocEnd, Token::HereDocEnd, token, token.1.end);
+                    return Ok(ret);
+                },
                 // TODO  |   T_START_HEREDOC encaps_list T_END_HEREDOC { $$ = $2; }
                 _ => {
                     self.advance(-1);

@@ -7,10 +7,10 @@ fn process_stmt(input: &str) -> Stmt {
     result.pop().unwrap()
 }
 
-/*#[test]
+#[test]
 fn parse_stmt_heredoc() {
-    assert_eq!(process_stmt("<<<EOT\ntest\nEOT;\n$g;; }"), enb!(None, Expr_::String("".into())));
-}*/
+    assert_eq!(process_stmt("<<<EOT\ntest\nEOT;\n;"), senb!(0,17, Expr_::String("test".into())));
+}
 
 #[test]
 fn parse_stmt_echo() {
