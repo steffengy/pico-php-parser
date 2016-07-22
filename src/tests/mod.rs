@@ -1,24 +1,32 @@
+/// expression (boxed)
 macro_rules! eb {
-    (None, $e:expr) => {Box::new(enb!(None, $e))};
     ($s:expr, $end:expr, $e:expr) => {Box::new(enb!($s, $end, $e))};
 }
 
+/// expression (not boxed)
 macro_rules! enb {
     // 6 is the sizeof "<?php "
-    (None, $e:expr) => {rnb!(0,0, $e)};
-    ($s:expr, None, $e:expr) => {rnb!($s+6, 0, $e)};
     ($s:expr, $end:expr, $e:expr) => {rnb!($s+6, $end+6, $e)};
 }
 
-macro_rules! rb {
-    (None, $e:expr) => {Box::new(rnb!(None, $e))};
-    ($s:expr, $end:expr, $e:expr) => {Box::new(rnb!($s, $end, $e))};
+/// statement expression (not boxed)
+macro_rules! st {
+    ($s:expr, $end:expr, $st:expr) => {rsnb!($s+6, $end+6, $st)};
 }
 
+/// statement expression (wrapping a not-boxed expr)
+macro_rules! senb {
+    ($s:expr, $end:expr, $e:expr) => {st!($s, $end+1, Stmt_::Expr(enb!($s, $end, $e)))}
+}
+
+/// raw spanned expression (not boxed)
 macro_rules! rnb {
-    (None, $e:expr) => {Expr($e, Span::new())};
-    ($s:expr, None, $e:expr) => {Expr($e, Span { start: $s, ..Span::new()})};
     ($s:expr, $end:expr, $e:expr) => {Expr($e, Span { start:($s) as u32, end:($end) as u32, ..Span::new() })};
+}
+
+/// raw spanned statement (not boxed)
+macro_rules! rsnb {
+    ($s:expr, $end:expr, $st:expr) => {Stmt($st, Span { start: $s, end: $end, ..Span::new()})};
 }
 
 macro_rules! constant {

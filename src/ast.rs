@@ -146,7 +146,16 @@ impl MemberModifiers {
 pub struct Expr(pub Expr_, pub Span);
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block(pub Vec<Expr>);
+pub struct Stmt(pub Stmt_, pub Span);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Block(pub Vec<Stmt>);
+
+impl Block {
+    pub fn empty() -> Block {
+        Block(vec![])
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
@@ -158,17 +167,10 @@ pub enum Expr_ {
     Array(Vec<(Option<Expr>, Expr)>),
     Variable(RcStr),
     Reference(Box<Expr>),
-    Use(Vec<UseClause>),
     Clone(Box<Expr>),
-    Exit(Option<Box<Expr>>),
-    Echo(Vec<Expr>),
     Isset(Vec<Expr>),
     Empty(Box<Expr>),
-    Unset(Vec<Expr>),
-    Return(Option<Box<Expr>>),
-    Throw(Box<Expr>),
-    Break(Option<Box<Expr>>),
-    Continue(Option<Box<Expr>>),
+    Exit(Option<Box<Expr>>),
 
     Include(IncludeTy, Box<Expr>),
     ArrayIdx(Box<Expr>, Vec<Expr>),
@@ -180,38 +182,51 @@ pub enum Expr_ {
     BinaryOp(Op, Box<Expr>, Box<Expr>),
     InstanceOf(Box<Expr>, Box<Expr>),
     Cast(Ty, Box<Expr>),
+    /// an anonymous function
     Function(FunctionDecl),
 
     // statements
-    Block(Block),
     Assign(Box<Expr>, Box<Expr>),
     /// compound (binary) assign e.g. $test += 3; which is equal to $test = $test + 3; (Assign, BinaryOp)
     CompoundAssign(Box<Expr>, Op, Box<Expr>),
     AssignRef(Box<Expr>, Box<Expr>),
     List(Vec<(Option<Expr>, Expr)>),
+
+    /// same as if, just will pass the return-value of either expression to the parent
+    /// if .1 (then) is None, the value of .0 (condition) will be used
+    /// TODO: this should be desugared into an `If` during post-processing
+    TernaryIf(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt_ {
+    Block(Block),
+    Decl(Decl),
+    Use(Vec<UseClause>),
+    /// An expression which is terminated by a semicolon
+    Expr(Expr),
+    Echo(Vec<Expr>),
+    Return(Option<Box<Expr>>),
+    Break(Option<Box<Expr>>),
+    Continue(Option<Box<Expr>>),
+    Unset(Vec<Expr>),
+
     /// If (condition=.0) { Block=.1 } else Else_Expr=.2
-    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
-    While(Box<Expr>, Box<Expr>),
-    DoWhile(Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Block, Block),
+    While(Box<Expr>, Block),
+    DoWhile(Block, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
-    For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Box<Expr>),
-    ForEach(Box<Expr>, Option<Box<Expr>>, Box<Expr>, Box<Expr>),
+    For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Block),
+    ForEach(Box<Expr>, Option<Box<Expr>>, Box<Expr>, Block),
     /// Try(TryBlock, CatchClauses, FinallyClause)
     Try(Block, Vec<CatchClause>, Option<Block>),
+    Throw(Box<Expr>),
 
     /// switch (stmt=.0) [case item: body]+=.1
     /// All item-cases for a body will be included in the first-member Vec
     /// so basically we have a mapping from all-cases -> body in .1
     /// TODO: should be desugared into an if-statement
     Switch(Box<Expr>, Vec<SwitchCase>),
-
-    /// same as if, just will pass the return-value of either expression to the parent
-    /// if .1 (then) is None, the value of .0 (condition) will be used
-    /// TODO: this should be desugared into an `If` during post-processing
-    TernaryIf(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
-
-    // These are not actual expressions, but will be stored as such, before any filtering happens
-    Decl(Decl),
 }
 
 #[derive(Clone, Debug, PartialEq)]

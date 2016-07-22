@@ -1,24 +1,17 @@
 use parser::*;
 
-fn process_script(input: &str) -> Vec<Expr> {
+fn process_script(input: &str) -> Vec<Stmt> {
     Parser::parse_str(&input).unwrap()
-}
-
-#[test]
-fn parse_simple_file_without_end_tag() {
-    let result = vec![rnb!(6, 10, Expr_::Echo(vec![ rnb!(11,17, Expr_::String("test".into())) ]))];
-    assert_eq!(process_script("<?php echo \"test\";"), result);
-    assert_eq!(process_script("<?php echo \"test\";\n"), result);
 }
 
 #[test]
 fn parse_simple_file_echos() {
     assert_eq!(process_script(r#"before<?php echo "test"; ?>after1<?php echo "end"; ?>end"#), vec![
-        rnb!(0,0, Expr_::Echo(vec![ rnb!(0,6, Expr_::String("before".into())) ])),
-        rnb!(12,16, Expr_::Echo(vec![ rnb!(17,23, Expr_::String("test".into())) ])),
-        rnb!(0,0, Expr_::Echo(vec![ rnb!(27,33, Expr_::String("after1".into())) ])),
-        rnb!(39,43, Expr_::Echo(vec![ rnb!(44,49, Expr_::String("end".into())) ])),
-        rnb!(0,0, Expr_::Echo(vec![ rnb!(53,56, Expr_::String("end".into())) ])),
+        rsnb!(0,6, Stmt_::Echo(vec![ rnb!(0,6, Expr_::String("before".into())) ])),
+        rsnb!(12,24, Stmt_::Echo(vec![ rnb!(17,23, Expr_::String("test".into())) ])),
+        rsnb!(27,33, Stmt_::Echo(vec![ rnb!(27,33, Expr_::String("after1".into())) ])),
+        rsnb!(39,50, Stmt_::Echo(vec![ rnb!(44,49, Expr_::String("end".into())) ])),
+        rsnb!(53,56, Stmt_::Echo(vec![ rnb!(53,56, Expr_::String("end".into())) ])),
     ]);
 }
 
