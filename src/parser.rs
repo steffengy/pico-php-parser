@@ -454,7 +454,7 @@ impl Parser {
 
         //  parse the "base" item, after which some "appendixes" for array indexing, function calling or members can be
         //    class_name T_PAAMAYIM_NEKUDOTAYIM simple_variable
-        //    class_name T_PAAMAYIM_NEKUDOTAYIM identifier '['   //inlined the "constant" grammar rule
+        //    class_name T_PAAMAYIM_NEKUDOTAYIM identifier '('   //inlined the "constant" grammar rule
         #[inline]
         fn parse_const_scoped(p: &mut Parser) -> Result<(Expr, Expr, Span), ParserError> {
             let old_pos = p.pos;
@@ -466,7 +466,7 @@ impl Parser {
                         return Ok((cls_name, var_name, mk_span(start_pos as usize, end_pos as usize)));
                     }
                     let identifier = try!(p.parse_identifier_as_expr());
-                    if let Some(&TokenSpan(Token::SquareBracketOpen, _)) = p.next_token() {
+                    if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = p.next_token() {
                         let end_pos = { let Expr(_, ref span) = identifier; span.end };
                         return Ok((cls_name, identifier, mk_span(start_pos as usize, end_pos as usize)));
                     }
@@ -1647,7 +1647,7 @@ impl Parser {
                 _ => tokens.push(tok),
             }
         }
-        println!("{:?}", tokens);
+        //println!("{:?}", tokens);
         let mut p = Parser::new(tokens, ext, interner);
         // error handling..
         Ok(match p.parse_top_statement_list() {

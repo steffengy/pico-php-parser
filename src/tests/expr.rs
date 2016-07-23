@@ -10,8 +10,9 @@ fn process_expr(input: &str) -> Expr {
     }
 }
 
+#[test]
 fn parse_expr_comment() {
-    assert_eq!(process_expr("1/*test*/+/*test*/2"), enb!(1,2, Expr_::BinaryOp(Op::Add, eb!(0, 1, Expr_::Int(1)), eb!(2, 3, Expr_::Int(2)))));
+    assert_eq!(process_expr("1/*test*/+/*test*/2"), enb!(0,19, Expr_::BinaryOp(Op::Add, eb!(0, 1, Expr_::Int(1)), eb!(18, 19, Expr_::Int(2)))));
     //TODO: doc comment tests
 }
 
@@ -186,10 +187,13 @@ fn parse_expr_static_const() {
 
 #[test]
 fn parse_expr_static_property() {
-    assert_eq!(process_expr(r#"Obj::$test"#), enb!(0,10, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,10, Expr_::Variable("test".into())) ])));
-    assert_eq!(process_expr(r#"Obj::$a::$b"#), enb!(0,11, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![
+    assert_eq!(process_expr("Obj::$test"), enb!(0,10, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![ enb!(5,10, Expr_::Variable("test".into())) ])));
+    assert_eq!(process_expr("Obj::$a::$b"), enb!(0,11, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![
         enb!(5,7, Expr_::Variable("a".into())), enb!(9,11, Expr_::Variable("b".into()))
     ])));
+    assert_eq!(process_expr("Obj::test()"), enb!(0,11, Expr_::Call(eb!(0,9, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![
+        enb!(5,9, Expr_::Path(Path::Identifier("test".into())))
+    ])), vec![])));
 }
 
 #[test]
