@@ -123,6 +123,7 @@ fn parse_expr_array_idx() {
 #[test]
 fn parse_expr_func_call() {
     assert_eq!(process_expr(r#"test()"#), enb!(0,6, Expr_::Call(eb!(0,4, Expr_::Path(Path::Identifier("test".into()))), vec![])));
+    assert_eq!(process_expr(r#"array_()"#), enb!(0,8, Expr_::Call(eb!(0,6, Expr_::Path(Path::Identifier("array_".into()))), vec![])));
     assert_eq!(process_expr(r#"func_x(1, 2)"#), enb!(0,12, Expr_::Call(eb!(0,6, Expr_::Path(Path::Identifier("func_x".into()))),
         vec![ enb!(7,8, Expr_::Int(1)), enb!(10,11, Expr_::Int(2)) ]
     )));

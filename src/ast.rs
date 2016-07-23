@@ -74,7 +74,7 @@ pub enum UnaryOp {
     SilenceErrors,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Visibility {
     None,
     Public,
@@ -105,21 +105,21 @@ impl ClassModifiers {
     }
 
     #[inline]
-    pub fn has(&self, m: &ClassModifier) -> bool {
-        return self.0 & (*m as u8) != 0;
+    pub fn has(&self, m: ClassModifier) -> bool {
+        return self.0 & (m as u8) != 0;
     }
 }
 
 /// the boolean indicates whether the underlying item is static or not
+/// TODO: error validation of duplicate and invalid states in ::new
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MemberModifier {
-    None = 1<<0,
-    Public = 1<<1,
-    Protected = 1<<2,
-    Private = 1<<3,
-    Static = 1<<4,
-    Abstract = 1<<5,
-    Final = 1<<6,
+    Public = 1<<0,
+    Protected = 1<<1,
+    Private = 1<<2,
+    Static = 1<<3,
+    Abstract = 1<<4,
+    Final = 1<<5,
 }
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MemberModifiers(u8);
@@ -137,8 +137,8 @@ impl MemberModifiers {
         MemberModifiers(flag)
     }
 
-    pub fn has(&self, m: &MemberModifier) -> bool {
-        return self.0 & (*m as u8) != 0
+    pub fn has(&self, m: MemberModifier) -> bool {
+        return self.0 & (m as u8) != 0
     }
 }
 
@@ -154,6 +154,10 @@ pub struct Block(pub Vec<Stmt>);
 impl Block {
     pub fn empty() -> Block {
         Block(vec![])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.0.is_empty()
     }
 }
 

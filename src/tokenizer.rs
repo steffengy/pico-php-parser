@@ -110,55 +110,67 @@ macro_rules! state_helper {
     (pop, $self_:expr) => ($self_.pop_state());
 }
 
-macro_rules! match_token {
+macro_rules! match_token_alias {
     // set state syntax
-    ($self_:expr, $e:expr, $token:ident, state=$new_state:ident) => {
-        if $self_.input().starts_with($e) {
+    ($self_:expr, $alias:expr, $token:ident, state=$new_state:ident) => {{
+        let str_repr = $alias;
+        if $self_.input().starts_with(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance($e.len());
+            $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             $self_.state.state = State::$new_state;
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
-    };
+    }};
     // state unchanged
-    ($self_:expr, $e:expr, $token:ident) => {
-        if $self_.input().starts_with($e) {
+    ($self_:expr, $alias:expr, $token:ident) => {{
+        let str_repr = $alias;
+        if $self_.input().starts_with(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance($e.len());
+            $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
-    };
+    }};
+}
+
+macro_rules! match_token {
+    // set state syntax
+    ($self_:expr, $token:ident, state=$new_state:ident) => {match_token_alias!($self_, Token::$token.repr(), $token, state=$new_state)};
+    // state unchanged
+    ($self_:expr, $token:ident) => {match_token_alias!($self_, Token::$token.repr(), $token)};
     // state push
-    ($self_:expr, $e:expr, $token:ident, state<-$new_state:ident) => {
-        if $self_.input().starts_with($e) {
+    ($self_:expr, $token:ident, state<-$new_state:ident) => {{
+        let str_repr = Token::$token.repr();
+        if $self_.input().starts_with(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance($e.len());
+            $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             state_helper!(push, $self_, $new_state);
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
-    };
+    }};
     // state pop
-    ($self_:expr, $e:expr, $token:ident, state->) => {
-        if $self_.input().starts_with($e) {
+    ($self_:expr, $token:ident, state->) => {{
+        let str_repr = Token::$token.repr();
+        if $self_.input().starts_with(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance($e.len());
+            $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             state_helper!(pop, $self_);
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
-    }
+    }};
 }
 
 /// return if a token was found, else continue in code flow
 macro_rules! ret_token {
-    ($e:expr) => (match $e {
-        Ok(x) => return Ok(x),
-        Err(SyntaxError::None) => (),
-        x => return x,
-    });
+    ($e:expr) => {match $e {
+            Ok(x) => return Ok(x),
+            Err(SyntaxError::None) => (),
+            x => return x,
+        }
+    };
 }
 
 /// helper to transform string-members into the appropriate token
@@ -343,6 +355,10 @@ impl<'a> Tokenizer<'a> {
         // at this point we either matched "long." or just "."
         let end_pos2 = match self.input().chars().position(|x| x < '0' || x > '9') {
             None => self.input().len(),
+            Some(0) if str_.len() == 1 => {
+                self.state.src_pos = old_pos;
+                return Err(SyntaxError::None);
+            },
             Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos(), end_pos);
@@ -796,12 +812,13 @@ impl<'a> Tokenizer<'a> {
             if self.input().starts_with('#') { 1 }
             else if self.input().starts_with("//") { 2 }
         else { 0 };
-        let end_pos = if start_tokens_count > 0 {
+        let comment = if start_tokens_count > 0 {
             self.advance(start_tokens_count);
-            match self.input().chars().position(|x| x == '\n') {
+            let end_pos = match self.input().chars().position(|x| x == '\n') {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
-            }
+            };
+            self.advance(end_pos)
         } else {
             // block comment
             let start_tokens_count =
@@ -810,19 +827,24 @@ impl<'a> Tokenizer<'a> {
             else { 0 };
             if start_tokens_count > 0 {
                 self.advance(start_tokens_count);
-                match self.input().find("*/") {
+                let end_pos = match self.input().find("*/") {
                     Some(end_pos) => end_pos,
                     None => {
                         let old_pos = self.state.src_pos;
                         self.state.src_pos = old_pos;
                         return Err(SyntaxError::Unterminated("comment", mk_span(self.input_pos(), old_pos)));
                     },
-                }
+                };
+                let ret = self.advance(end_pos);
+                self.advance(2);
+                ret
             } else {
                 return Err(SyntaxError::None);
             }
-        };
-        let comment = self.advance(end_pos).to_owned();
+        }.to_owned();
+        for i in 0..comment.lines().count()-1 {
+            self.state.next_line()
+        }
         let mut span = mk_span(old_pos, self.input_pos());
         if doc_comment {
             // For a doc comment the parser'll use the content of Token::Comment as doc_comment
@@ -869,10 +891,10 @@ impl<'a> Tokenizer<'a> {
             self.state.state = State::Done;
             return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
         }
-        ret_token!(match_token!(self, "<?=", OpenTagWithEcho, state = InScripting));
-        ret_token!(match_token!(self, "<?php", OpenTag, state = InScripting));
+        ret_token!(match_token!(self, OpenTagWithEcho, state = InScripting));
+        ret_token!(match_token!(self, OpenTag, state = InScripting));
         if self.short_tags {
-            ret_token!(match_token!(self, "<?", OpenTag, state = InScripting));
+            ret_token!(match_token_alias!(self, "<?", OpenTag, state = InScripting));
         }
         // read inline HTML until PHP starttag (keep last)
         let mut end_pos = 0;
@@ -904,24 +926,65 @@ impl<'a> Tokenizer<'a> {
 
     /// token scanner for script-seciton
     fn in_scripting_token(&mut self) -> Result<TokenSpan, SyntaxError> {
+        self.whitespace();
         // check if we are at the end of the input
         if self.input().is_empty() {
             return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())))
         }
-        self.whitespace();
-        ret_token!(self.match_variable());
-        ret_token!(self.match_dq_string());
-        ret_token!(self.match_sq_string());
+        let mut ret = vec![];
+        let old_pos = self.input_pos();
         ret_token!(self.match_here_now_doc());
+        ret_token!(self._bnum());
+        ret_token!(self._hnum());
+        ret_token!(self._dnum_lnum());
+        ret_token!(self.match_dq_string());
+        ret_token!(self.match_variable());
+        ret_token!(self.match_sq_string());
         ret_token!(self.match_comments());
         ret_token!(self.match_backquote());
+        self.state.src_pos = old_pos;
+        match self._label() {
+            Some((label, span)) => {
+                ret.push(Ok(TokenSpan(Token::String(self.interner.intern(label)), span)));
+            },
+            _ => ()
+        }
+        self.state.src_pos = old_pos;
+        ret.push(self.in_scripting_other_token());
 
-        ret_token!(match_token!(self, "?>", CloseTag, state = Initial));
-        ret_token!(match_token!(self, "exit", Exit));
-        ret_token!(match_token!(self, "die", Exit));
-        ret_token!(match_token!(self, "function", Function));
-        ret_token!(match_token!(self, "const", Const));
-        ret_token!(match_token!(self, "return", Return));
+        // we return either the longest success or longest error
+        // being the longest means, having the furthest position
+        let mut longest = (0, None);
+        let mut longest_err = (0, None);
+        for r in ret {
+            match r {
+                Ok(token) => if longest.0 <= token.1.end {
+                    longest = (token.1.end, Some(token));
+                },
+                Err(SyntaxError::None) => (),
+                Err(err) => if longest_err.0 <= err.span().end {
+                    longest_err = (err.span().end, Some(err));
+                }
+            }
+        }
+        if let Some(ret) = longest.1 {
+            self.state.src_pos = longest.0 as usize;
+            return Ok(ret);
+        }
+        if let Some(err) = longest_err.1 {
+            self.state.src_pos = longest_err.0 as usize;
+            return Err(err);
+        }
+        Err(SyntaxError::UnknownCharacter(mk_span(self.input_pos(), self.input_pos() + 1)))
+    }
+
+    fn in_scripting_other_token(&mut self) -> Result<TokenSpan, SyntaxError> {
+        ret_token!(match_token!(self, CloseTag, state = Initial));
+        ret_token!(match_token!(self, Exit));
+        ret_token!(match_token_alias!(self, "die", Exit));
+        ret_token!(match_token!(self, Function));
+        ret_token!(match_token!(self, Const));
+        ret_token!(match_token!(self, Return));
         ret_token!({
             let keyword = "yield";
             if self.input().starts_with(keyword) {
@@ -940,64 +1003,64 @@ impl<'a> Tokenizer<'a> {
                 }
             } else { Err(SyntaxError::None) }
         });
-        ret_token!(match_token!(self, "try",  Try));
-        ret_token!(match_token!(self, "catch",  Catch));
-        ret_token!(match_token!(self, "finally",  Finally));
-        ret_token!(match_token!(self, "throw",  Throw));
-        ret_token!(match_token!(self, "if",  If));
-        ret_token!(match_token!(self, "elseif",  ElseIf));
-        ret_token!(match_token!(self, "endif",  EndIf));
-        ret_token!(match_token!(self, "else",  Else));
-        ret_token!(match_token!(self, "while",  While));
-        ret_token!(match_token!(self, "endwhile",  EndWhile));
-        ret_token!(match_token!(self, "do",  Do));
-        ret_token!(match_token!(self, "foreach",  Foreach));
-        ret_token!(match_token!(self, "endforeach",  EndForeach));
-        ret_token!(match_token!(self, "for",  For));
-        ret_token!(match_token!(self, "endfor",  Endfor));
-        ret_token!(match_token!(self, "declare",  Declare));
-        ret_token!(match_token!(self, "enddeclare",  EndDeclare));
-        ret_token!(match_token!(self, "instanceof",  InstanceOf));
-        ret_token!(match_token!(self, "as",  As));
-        ret_token!(match_token!(self, "switch",  Switch));
-        ret_token!(match_token!(self, "endswitch",  EndSwitch));
-        ret_token!(match_token!(self, "case",  Case));
-        ret_token!(match_token!(self, "default",  Default));
-        ret_token!(match_token!(self, "break",  Break));
-        ret_token!(match_token!(self, "continue",  Continue));
-        ret_token!(match_token!(self, "goto",  Goto));
-        ret_token!(match_token!(self, "echo",  Echo));
-        ret_token!(match_token!(self, "print",  Print));
-        ret_token!(match_token!(self, "class",  Class));
-        ret_token!(match_token!(self, "interface",  Interface));
-        ret_token!(match_token!(self, "trait",  Trait));
-        ret_token!(match_token!(self, "extends",  Extends));
-        ret_token!(match_token!(self, "implements",  Implements));
-        ret_token!(match_token!(self, "->", ObjectOp, state <- LookingForProperty));
-        ret_token!(match_token!(self, "::",  ScopeOp));
-        ret_token!(match_token!(self, "\\",  NsSeparator));
-        ret_token!(match_token!(self, "...",  Ellipsis));
-        ret_token!(match_token!(self, "??",  Coalesce));
-        ret_token!(match_token!(self, "new",  New));
-        ret_token!(match_token!(self, "clone",  Clone));
-        ret_token!(match_token!(self, "var",  Var));
+        ret_token!(match_token!(self,   Try));
+        ret_token!(match_token!(self,   Catch));
+        ret_token!(match_token!(self,   Finally));
+        ret_token!(match_token!(self,   Throw));
+        ret_token!(match_token!(self,   If));
+        ret_token!(match_token!(self,   ElseIf));
+        ret_token!(match_token!(self,   EndIf));
+        ret_token!(match_token!(self,   Else));
+        ret_token!(match_token!(self,   While));
+        ret_token!(match_token!(self,   EndWhile));
+        ret_token!(match_token!(self,   Do));
+        ret_token!(match_token!(self,   Foreach));
+        ret_token!(match_token!(self,   EndForeach));
+        ret_token!(match_token!(self,   For));
+        ret_token!(match_token!(self,   Endfor));
+        ret_token!(match_token!(self,   Declare));
+        ret_token!(match_token!(self,   EndDeclare));
+        ret_token!(match_token!(self,   InstanceOf));
+        ret_token!(match_token!(self,   As));
+        ret_token!(match_token!(self,   Switch));
+        ret_token!(match_token!(self,   EndSwitch));
+        ret_token!(match_token!(self,   Case));
+        ret_token!(match_token!(self,   Default));
+        ret_token!(match_token!(self,   Break));
+        ret_token!(match_token!(self,   Continue));
+        ret_token!(match_token!(self,   Goto));
+        ret_token!(match_token!(self,   Echo));
+        ret_token!(match_token!(self,   Print));
+        ret_token!(match_token!(self,   Class));
+        ret_token!(match_token!(self,   Interface));
+        ret_token!(match_token!(self,   Trait));
+        ret_token!(match_token!(self,   Extends));
+        ret_token!(match_token!(self,   Implements));
+        ret_token!(match_token!(self,   ObjectOp, state <- LookingForProperty));
+        ret_token!(match_token!(self,   ScopeOp));
+        ret_token!(match_token!(self,   NsSeparator));
+        ret_token!(match_token!(self,   Ellipsis));
+        ret_token!(match_token!(self,   Coalesce));
+        ret_token!(match_token!(self,   New));
+        ret_token!(match_token!(self,   Clone));
+        ret_token!(match_token!(self,   Var));
 
         // match cast tokens, all in one-try
         if self.input().starts_with("(") {
             #[inline]
             fn try_determine_cast_type(self_: &mut Tokenizer) -> Result<TokenSpan, SyntaxError> {
-                ret_token!(match_token!(self_, "integer", CastInt));
-                ret_token!(match_token!(self_, "int", CastInt));
-                ret_token!(match_token!(self_, "real", CastDouble));
-                ret_token!(match_token!(self_, "double", CastDouble));
-                ret_token!(match_token!(self_, "float", CastDouble));
-                ret_token!(match_token!(self_, "string", CastString));
-                ret_token!(match_token!(self_, "binary", CastString));
-                ret_token!(match_token!(self_, "array", CastArray));
-                ret_token!(match_token!(self_, "object", CastObject));
-                ret_token!(match_token!(self_, "boolean", CastBool));
-                ret_token!(match_token!(self_, "bool", CastBool));
-                ret_token!(match_token!(self_, "unset", CastUnset));
+                ret_token!(match_token!(self_,  CastInt));
+                ret_token!(match_token_alias!(self_, "int", CastInt));
+                ret_token!(match_token_alias!(self_, "real", CastDouble));
+                ret_token!(match_token!(self_,  CastDouble));
+                ret_token!(match_token_alias!(self_, "float",  CastDouble));
+                ret_token!(match_token!(self_,  CastString));
+                ret_token!(match_token_alias!(self_, "binary", CastString));
+                ret_token!(match_token!(self_,  CastArray));
+                ret_token!(match_token!(self_,  CastObject));
+                ret_token!(match_token_alias!(self_, "boolean", CastBool));
+                ret_token!(match_token!(self_,  CastBool));
+                ret_token!(match_token!(self_,  CastUnset));
                 Err(SyntaxError::None)
             }
             let old_pos = self.input_pos();
@@ -1013,61 +1076,61 @@ impl<'a> Tokenizer<'a> {
             // restore the position if we didn't match a catch
             self.state.src_pos = old_pos;
         }
-        ret_token!(match_token!(self, "eval",  Eval));
-        ret_token!(match_token!(self, "include_once",  IncludeOnce));
-        ret_token!(match_token!(self, "include",  Include));
-        ret_token!(match_token!(self, "require_once",  RequireOnce));
-        ret_token!(match_token!(self, "require",  Require));
-        ret_token!(match_token!(self, "namespace",  Namespace));
-        ret_token!(match_token!(self, "use",  Use));
-        ret_token!(match_token!(self, "insteadof",  Insteadof));
-        ret_token!(match_token!(self, "global",  Global));
-        ret_token!(match_token!(self, "isset",  Isset));
-        ret_token!(match_token!(self, "empty",  Empty));
-        ret_token!(match_token!(self, "__halt_compiler",  HaltCompiler));
-        ret_token!(match_token!(self, "static",  Static));
-        ret_token!(match_token!(self, "abstract",  Abstract));
-        ret_token!(match_token!(self, "final",  Final));
-        ret_token!(match_token!(self, "private",  Private));
-        ret_token!(match_token!(self, "protected",  Protected));
-        ret_token!(match_token!(self, "public",  Public));
-        ret_token!(match_token!(self, "unset",  Unset));
-        ret_token!(match_token!(self, "=>",  DoubleArrow));
-        ret_token!(match_token!(self, "list",  List));
-        ret_token!(match_token!(self, "array",  Array));
-        ret_token!(match_token!(self, "callable",  Callable));
-        ret_token!(match_token!(self, "++",  Increment));
-        ret_token!(match_token!(self, "--",  Decrement));
-        ret_token!(match_token!(self, "===",  IsIdentical));
-        ret_token!(match_token!(self, "!==",  IsNotIdentical));
-        ret_token!(match_token!(self, "==",  IsEqual));
-        ret_token!(match_token!(self, "!=", IsNotEqual));
-        ret_token!(match_token!(self, "<>", IsNotEqual));
-        ret_token!(match_token!(self, "<=>",  SpaceShip));
-        ret_token!(match_token!(self, "<=",  IsSmallerOrEqual));
-        ret_token!(match_token!(self, ">=",  IsGreaterOrEqual));
-        ret_token!(match_token!(self, "+=",  PlusEqual));
-        ret_token!(match_token!(self, "-=",  MinusEqual));
-        ret_token!(match_token!(self, "*=",  MulEqual));
-        ret_token!(match_token!(self, "**",  Pow));
-        ret_token!(match_token!(self, "**=",  PowEqual));
-        ret_token!(match_token!(self, "/=",  DivEqual));
-        ret_token!(match_token!(self, ".=",  ConcatEqual));
-        ret_token!(match_token!(self, "%=",  ModEqual));
-        ret_token!(match_token!(self, "<<=",  SlEqual));
-        ret_token!(match_token!(self, ">>=",  SrEqual));
-        ret_token!(match_token!(self, "&=",  AndEqual));
-        ret_token!(match_token!(self, "|=",  OrEqual));
-        ret_token!(match_token!(self, "^=",  XorEqual));
-        ret_token!(match_token!(self, "||",  BoolOr));
-        ret_token!(match_token!(self, "&&",  BoolAnd));
-        ret_token!(match_token!(self, "OR",  LogicalOr));
-        ret_token!(match_token!(self, "AND",  LogicalAnd));
-        ret_token!(match_token!(self, "XOR",  LogicalXor));
-        ret_token!(match_token!(self, "<<",  Sl));
-        ret_token!(match_token!(self, ">>",  Sr));
-        ret_token!(match_token!(self, "{", CurlyBracesOpen, state <- InScripting));
-        ret_token!(match match_token!(self, "}", CurlyBracesClose, state ->) {
+        ret_token!(match_token!(self,   Eval));
+        ret_token!(match_token!(self,   IncludeOnce));
+        ret_token!(match_token!(self,   Include));
+        ret_token!(match_token!(self,   RequireOnce));
+        ret_token!(match_token!(self,   Require));
+        ret_token!(match_token!(self,   Namespace));
+        ret_token!(match_token!(self,   Use));
+        ret_token!(match_token!(self,   Insteadof));
+        ret_token!(match_token!(self,   Global));
+        ret_token!(match_token!(self,   Isset));
+        ret_token!(match_token!(self,   Empty));
+        ret_token!(match_token!(self,   HaltCompiler));
+        ret_token!(match_token!(self,   Static));
+        ret_token!(match_token!(self,   Abstract));
+        ret_token!(match_token!(self,   Final));
+        ret_token!(match_token!(self,   Private));
+        ret_token!(match_token!(self,   Protected));
+        ret_token!(match_token!(self,   Public));
+        ret_token!(match_token!(self,   Unset));
+        ret_token!(match_token!(self,   DoubleArrow));
+        ret_token!(match_token!(self,   List));
+        ret_token!(match_token!(self,   Array));
+        ret_token!(match_token!(self,   Callable));
+        ret_token!(match_token!(self,   Increment));
+        ret_token!(match_token!(self,   Decrement));
+        ret_token!(match_token!(self,   IsIdentical));
+        ret_token!(match_token!(self,   IsNotIdentical));
+        ret_token!(match_token!(self,   IsEqual));
+        ret_token!(match_token!(self,   IsNotEqual));
+        ret_token!(match_token_alias!(self, "<>", IsNotEqual));
+        ret_token!(match_token!(self,   SpaceShip));
+        ret_token!(match_token!(self,   IsSmallerOrEqual));
+        ret_token!(match_token!(self,   IsGreaterOrEqual));
+        ret_token!(match_token!(self,   PlusEqual));
+        ret_token!(match_token!(self,   MinusEqual));
+        ret_token!(match_token!(self,   MulEqual));
+        ret_token!(match_token!(self,   Pow));
+        ret_token!(match_token!(self,   PowEqual));
+        ret_token!(match_token!(self,   DivEqual));
+        ret_token!(match_token!(self,   ConcatEqual));
+        ret_token!(match_token!(self,   ModEqual));
+        ret_token!(match_token!(self,   SlEqual));
+        ret_token!(match_token!(self,   SrEqual));
+        ret_token!(match_token!(self,   AndEqual));
+        ret_token!(match_token!(self,   OrEqual));
+        ret_token!(match_token!(self,   XorEqual));
+        ret_token!(match_token!(self,   BoolOr));
+        ret_token!(match_token!(self,   BoolAnd));
+        ret_token!(match_token!(self,   LogicalOr));
+        ret_token!(match_token!(self,   LogicalAnd));
+        ret_token!(match_token!(self,   LogicalXor));
+        ret_token!(match_token!(self,   Sl));
+        ret_token!(match_token!(self,   Sr));
+        ret_token!(match_token!(self,   CurlyBracesOpen, state <- InScripting));
+        ret_token!(match match_token!(self, CurlyBracesClose, state ->) {
             Ok(TokenSpan(token, mut span)) => {
                 // equivalent of RESET_DOC_COMMENT()
                 span.doc_comment = Some("".to_owned());
@@ -1075,21 +1138,14 @@ impl<'a> Tokenizer<'a> {
             },
             x => x,
         }); //TODO: stack is allowed to be empty! (dont fail once error handling is implemented)
-        ret_token!(self._bnum());
-        ret_token!(self._hnum());
-        ret_token!(self._dnum_lnum());
-        ret_token!(match_token!(self, "__CLASS__", MagicClass));
-        ret_token!(match_token!(self, "__TRAIT__", MagicTrait));
-        ret_token!(match_token!(self, "__FUNCTION__", MagicFunction));
-        ret_token!(match_token!(self, "__METHOD__", MagicMethod));
-        ret_token!(match_token!(self, "__LINE__", MagicLine));
-        ret_token!(match_token!(self, "__FILE__", MagicFile));
-        ret_token!(match_token!(self, "__DIR__", MagicDir));
-        ret_token!(match_token!(self, "__NAMESPACE__", MagicNamespace));
-        match self._label() {
-            Some((label, span)) => return Ok(TokenSpan(Token::String(self.interner.intern(label)), span)),
-            None => (),
-        };
+        ret_token!(match_token!(self,  MagicClass));
+        ret_token!(match_token!(self,  MagicTrait));
+        ret_token!(match_token!(self,  MagicFunction));
+        ret_token!(match_token!(self,  MagicMethod));
+        ret_token!(match_token!(self,  MagicLine));
+        ret_token!(match_token!(self,  MagicFile));
+        ret_token!(match_token!(self,  MagicDir));
+        ret_token!(match_token!(self,  MagicNamespace));
         ret_token!(self._token()); //{TOKENS}, keep this last
         Err(SyntaxError::UnknownCharacter(mk_span(self.input_pos(), self.input_pos() + 1)))
     }
@@ -1097,7 +1153,7 @@ impl<'a> Tokenizer<'a> {
     /// token-scanner for looking-for-property state
     fn looking_for_property_token(&mut self) -> Result<TokenSpan, SyntaxError> {
         self.whitespace();
-        ret_token!(match_token!(self, "->", ObjectOp));
+        ret_token!(match_token!(self, ObjectOp));
         match self._label().map(|(x, span)| (self.interner.intern(x), span)) {
             None => (),
             Some((x, span)) => {

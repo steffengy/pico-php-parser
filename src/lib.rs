@@ -14,5 +14,8 @@ mod tokenizer;
 mod parser;
 pub use parser::*;
 
+mod printer;
+pub use printer::PrettyPrinter;
+
 #[cfg(test)]
 mod tests;

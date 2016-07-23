@@ -66,7 +66,6 @@ impl SpannedParserError {
         let mut str_ = format!("expected one of {:?} at line {:?}\n", self.error.tokens,
             self.line,
         );
-        println!("{:?}", self);
         if let Some(code) = code {
             str_.push_str(&code[self.line_start as usize..self.line_end as usize]);
             str_.push_str("\n");
@@ -378,7 +377,7 @@ impl Parser {
             TokenSpan(Token::Variable(varname), span) => Expr(Expr_::Variable(varname.into()), span),
             _ => unreachable!(),
         }), {
-            println!("err simple_var");
+
             return Err(ParserError::new(vec![Token::Dollar, Token::Variable(self.interner.intern(""))], self.pos));
         })
     }
@@ -961,7 +960,6 @@ impl Parser {
         });
 
         deepest!(deepest_err, self.parse_scalar());
-        println!("err other_expr");
         deepest_unpack!(self, deepest_err)
     }
 
@@ -1045,12 +1043,16 @@ impl Parser {
     }
 
     fn parse_identifier(&mut self) -> Result<(RcStr, Span), ParserError> {
-        if_lookahead_expect!(self, Token::String(_), Token::String(self.interner.intern("")), token, {
-            if let Token::String(str_) = token.0 {
-                return Ok((str_, token.1));
+        if let Some(TokenSpan(token, span)) = self.next_token().map(|x| x.clone()) {
+            if let Token::String(str_) = token {
+                self.advance(1);
+                return Ok((str_, span));
+            } else if token.is_reserved_non_modifier() {
+                self.advance(1);
+                return Ok((self.interner.intern(token.repr()), span));
             }
-            unreachable!();
-        })
+        }
+        return Err(ParserError::new(vec![Token::String(self.interner.intern(""))], self.pos));
     }
 
     #[inline]
