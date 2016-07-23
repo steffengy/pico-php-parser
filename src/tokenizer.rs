@@ -549,8 +549,10 @@ impl<'a> Tokenizer<'a> {
             }
             // and match the single variable, prepend it
             if !str_.is_empty() {
+                let len = str_.len();
+                let start = span.start - 1;
                 let old_str_fragment = self.interner.intern(&mem::replace(str_, String::new()));
-                parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(span.start as usize -str_.len(), span.start as usize)));
+                parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(start as usize - len, start as usize)));
             }
             parts.push(TokenSpan(Token::Variable(label), mk_span(span.start as usize -1, span.end as usize)));
             parts.extend(tmp_parts);
@@ -571,6 +573,12 @@ impl<'a> Tokenizer<'a> {
                 tokens.push(tok);
             }
             if let Some(&TokenSpan(Token::CurlyBracesClose, _)) = tokens.last() {
+                if !str_.is_empty() {
+                    let len = str_.len();
+                    let start = bak_state.src_pos - 1;
+                    let old_str_fragment = self.interner.intern(&mem::replace(str_, String::new()));
+                    parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(start as usize - len, start as usize)));
+                }
                 parts.extend(tokens);
                 // undo the temporary tokenizer state transition
                 self.state.state = bak_state.state;
@@ -842,7 +850,7 @@ impl<'a> Tokenizer<'a> {
                 return Err(SyntaxError::None);
             }
         }.to_owned();
-        for i in 0..comment.lines().count()-1 {
+        for i in 0..comment.lines().count().checked_sub(1).unwrap_or(0) {
             self.state.next_line()
         }
         let mut span = mk_span(old_pos, self.input_pos());

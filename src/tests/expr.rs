@@ -64,6 +64,15 @@ fn parse_expr_string() {
 }
 
 #[test]
+fn parse_expr_string_fragmented() {
+    assert_eq!(process_expr(r#""hello $world""#), enb!(0,14, Expr_::BinaryOp(Op::Concat, eb!(1,7, Expr_::String("hello ".into())), eb!(7,13, Expr_::Variable("world".into())))));
+    assert_eq!(process_expr(r#""hello {$world}""#), enb!(0,16, Expr_::BinaryOp(Op::Concat, eb!(1,7, Expr_::String("hello ".into())), eb!(8,14, Expr_::Variable("world".into())))));
+    assert_eq!(process_expr(r#""hello $wor->ld""#), enb!(0,16, Expr_::BinaryOp(Op::Concat, eb!(1,7, Expr_::String("hello ".into())), eb!(7,15, Expr_::ObjMember(
+        eb!(7,11, Expr_::Variable("wor".into())), vec![ enb!(13,15, Expr_::Path(Path::Identifier("ld".into()))) ]
+    )))));
+}
+
+#[test]
 fn parse_expr_char_string() {
     assert_eq!(process_expr(r#"'\ntest\142'"#), enb!(0, 12, Expr_::String("\\ntest\\142".into())));
     assert_eq!(process_expr(r#"'a\'b\'c'"#), enb!(0,9, Expr_::String("a'b'c".into())));
@@ -259,6 +268,12 @@ fn parse_expr_array() {
     assert_eq!(process_expr("array()"), enb!(0,7, Expr_::Array(vec![])));
 }
 
+#[test]
+fn parse_expr_assoc_array() {
+    assert_eq!(process_expr("['a' => 'b']"), enb!(0,12, Expr_::Array(vec![
+        (Some(enb!(1,4, Expr_::String("a".into()))), enb!(8,11, Expr_::String("b".into())))
+    ])));
+}
 
 #[test]
 fn parse_expr_closure() {

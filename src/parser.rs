@@ -1080,6 +1080,7 @@ impl Parser {
 
     fn parse_encaps_list(&mut self) -> Result<Expr, ParserError> {
         let mut str_ = String::new();
+        let mut parts = vec![];
         let mut start_pos = None;
         let mut end_pos = 0;
         // find string literals
@@ -1094,13 +1095,55 @@ impl Parser {
                             end_pos = token.1.end;
                         }
                         str_.push_str(str_part.borrow());
+                        continue;
                     },
                     _ => unreachable!(),
                 }
-            }, { break });
+            });
+            if_lookahead!(self, Token::CurlyBracesOpen, _tok, {
+                if !str_.is_empty() {
+                    parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap() as usize, end_pos as usize)));
+                }
+                str_.clear();
+                let expr = try!(self.parse_expression(Precedence::None));
+                end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, token, token.1.end);
+                start_pos = Some(end_pos);
+                parts.push(expr);
+                continue;
+            });
+            match self.parse_variable() {
+                Ok(expr) => {
+                    if !str_.is_empty() {
+                        parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap() as usize, end_pos as usize)));
+                    }
+                    str_.clear();
+                    start_pos = Some(expr.1.end);
+                    end_pos = expr.1.end;
+                    parts.push(expr);
+                    continue;
+                },
+                Err(_) => (),
+            }
+            break;
         }
-        if str_.len() > 0 {
-            return Ok(Expr(Expr_::String(self.interner.intern(&str_)), Span { start: start_pos.unwrap(), end: end_pos, ..Span::new() }));
+        let str_expr = if !str_.is_empty() {
+            Some(Expr(Expr_::String(self.interner.intern(&str_)), Span { start: start_pos.unwrap(), end: end_pos, ..Span::new() }))
+        } else {
+            None
+        };
+        if !parts.is_empty() {
+            let initial_expr = match str_expr {
+                Some(x) => x,
+                None => parts.pop().unwrap(),
+            };
+            // concat all parts
+            return Ok(parts.into_iter().rev().fold(initial_expr, |acc, part| {
+                let span = mk_span(part.1.start as usize, acc.1.end as usize);
+                Expr(Expr_::BinaryOp(Op::Concat, Box::new(part), Box::new(acc)), span)
+            }));
+        }
+        if let Some(str_expr) = str_expr {
+            return Ok(str_expr);
         }
         // use this to generate our error, does not anything related to the grammar
         if_lookahead_expect!(self, Token::ConstantEncapsedString(_), Token::ConstantEncapsedString(self.interner.intern("")));
@@ -1149,8 +1192,9 @@ impl Parser {
                 Token::MagicClass => unimplemented!(),
                 // '"' encaps_list '"'     { $$ = $2; }
                 Token::DoubleQuote => {
-                    let ret = try!(self.parse_encaps_list());
-                    if_lookahead_expect!(self, Token::DoubleQuote, Token::DoubleQuote);
+                    let mut ret = try!(self.parse_encaps_list());
+                    ret.1.start = x.1.start;
+                    ret.1.end = if_lookahead_expect!(self, Token::DoubleQuote, Token::DoubleQuote, token, token.1.end);
                     return Ok(ret);
                 },
                 Token::HereDocStart => {
@@ -1175,17 +1219,27 @@ impl Parser {
         // parse array pairs as long as possible
         let mut pairs = vec![];
         loop {
-            match self.parse_expression(Precedence::None) {
-                Err(x) => break,
-                Ok(ex) => pairs.push((None, ex)),
-            }
+            let expr = match self.parse_expression(Precedence::None) {
+                Ok(x) => x,
+                Err(_) => break,
+            };
+            let kv_pair = if_lookahead!(self, Token::DoubleArrow, token, {
+                (Some(expr), try!(self.parse_expression(Precedence::None)))
+            }, {(None, expr)});
+            pairs.push(kv_pair);
             if_lookahead!(self, Token::Comma, _token, {}, break);
         }
         Ok(pairs)
     }
 
     fn parse_foreach_variable(&mut self) -> Result<Expr, ParserError> {
-        self.parse_variable()
+        let is_var = self.parse_is_ref();
+        let expr = try!(self.parse_variable());
+        if is_var {
+            let span = mk_span(expr.1.start as usize - 1, expr.1.start as usize);
+            return Ok(Expr(Expr_::Reference(Box::new(expr)), span));
+        }
+        Ok(expr)
     }
 
     #[inline]
