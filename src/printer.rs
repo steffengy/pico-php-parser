@@ -1,7 +1,8 @@
 ///! a pretty-ish printer
 use std::fmt::{self, Write};
 use std::borrow::Borrow;
-use ast::{Block, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, UseClause};
+use tokens::Token;
+use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, UseClause};
 use ast::{CatchClause, SwitchCase, Member, MemberModifiers, MemberModifier};
 
 pub struct PrettyPrinter<W: Write> {
@@ -375,6 +376,7 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(write!(self.target, "{:?}", str_));
                 self.write("\"")
             },
+            Expr_::BinaryString(ref str_) => unimplemented!(),
             Expr_::Int(ref i) => write!(self.target, "{}", i),
             Expr_::Double(ref d) => write!(self.target, "{}", d),
             Expr_::Array(ref arr) => {
@@ -388,6 +390,7 @@ impl<W: Write> PrettyPrinter<W> {
                 }
                 self.write(")")
             }
+            Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
             Expr_::Variable(ref varname) => write!(self.target, "${}", varname.borrow() as &str),
             Expr_::Reference(ref ref_expr) => {
                 try!(self.write("&"));
@@ -632,5 +635,23 @@ impl fmt::Display for Ty {
             }
         };
         write!(f, "{}", ty)
+    }
+}
+
+impl fmt::Display for Const {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            Const::Null => "null",
+            Const::True => "true",
+            Const::False => "false",
+            Const::MagicClass => Token::MagicClass.repr(),
+            Const::MagicTrait => Token::MagicTrait.repr(),
+            Const::MagicFunction => Token::MagicFunction.repr(),
+            Const::MagicMethod => Token::MagicMethod.repr(),
+            Const::MagicLine => Token::MagicLine.repr(),
+            Const::MagicFile => Token::MagicFile.repr(),
+            Const::MagicDir => Token::MagicDir.repr(),
+            Const::MagicNamespace => Token::MagicNamespace.repr(),
+        })
     }
 }

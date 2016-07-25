@@ -1,6 +1,7 @@
 //! tokenizer based on https://github.com/php/php-src/blob/ebb99a1a3a2ec9216d95c63b267ae0f66074f4de/Zend/zend_language_scanner.l
 //! since the reference doesn't seem very correct in some cases
 use std::str::{self, FromStr};
+use std::rc::Rc;
 use std::ops::Deref;
 use std::mem;
 
@@ -420,55 +421,66 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    /// matches ${label}[ and starts OFFSET_SCANNING or only ${label}
-    /*fn match_variable_offset(&mut self) -> Result<TokenSpan, SyntaxError> {
-        if self.input().len() < 2 {
-            return Err(SyntaxError::None)
-        }
-        match self.match_variable() {
-            Ok(token_span) => {
-                Ok(if self.input().starts_with('[') {
-                    state_helper!(push, self, VarOffset);
-                    token_span
-                } else {
-                    token_span
-                })
-            },
-            x => x,
-        }
-    }*/
-
-    fn str_escape(&mut self, str_: &mut String, sq: bool) -> Result<(), SyntaxError> {
+    fn str_escape(&mut self, bytes: &mut Vec<u8>, sq: bool) -> Result<(), SyntaxError> {
         let chr = match (self.input().chars().nth(1), sq) {
-            (Some('n'), false) => '\n',
-            (Some('r'), false) => '\r',
-            (Some('t'), false) => '\t',
-            (Some('f'), false) => '\x0C',
-            (Some('v'), false) => '\x0B',
+            (Some('n'), false) => Some(b'\n'),
+            (Some('r'), false) => Some(b'\r'),
+            (Some('t'), false) => Some(b'\t'),
+            (Some('f'), false) => Some(b'\x0C'),
+            (Some('v'), false) => Some(b'\x0B'),
             (Some('e'), false) => unimplemented!(),
-            (Some('"'), false) => '"',
-            (Some('\''), true) => '\'',
-            (Some('\\'), _) => '\\',
-            (Some('$'), false) => '$',
-            (Some('x'), false) | (Some('X'), false) => unimplemented!(),
+            (Some('"'), false) => Some(b'"'),
+            (Some('\''), true) => Some(b'\''),
+            (Some('\\'), _) => Some(b'\\'),
+            (Some('$'), false) => Some(b'$'),
+            (Some(x @ 'x'), false) | (Some(x @ 'X'), false) => {
+                // read up to 2 hex characters, on 0 add \x to bytes
+                let mut end_idx = 0;
+                for i in 2..4 {
+                    match self.input().chars().nth(i) {
+                        Some('a'...'z') | Some('A'...'Z') | Some('0'...'9') => end_idx = i,
+                        _ => break,
+                    }
+                }
+                if end_idx == 0 {
+                    bytes.push(b'\\');
+                    Some(x as u8)
+                } else {
+                    let start_pos = self.input().char_indices().nth(2).unwrap().0;
+                    let end_pos = self.input().char_indices().nth(end_idx+1).unwrap().0;
+                    let byte = u8::from_str_radix(&self.input()[start_pos..end_pos], 16).unwrap();
+                    bytes.push(byte);
+                    self.advance(1 + end_idx);
+                    return Ok(());
+                }
+            },
             (Some('u'), false) => unimplemented!(),
             (Some(x), _) => {
-                str_.push('\\');
-                x
+                bytes.push(b'\\');
+                let mut tmp_str = String::new();
+                tmp_str.push(x);
+                bytes.extend(tmp_str.as_bytes());
+                None
             },
             _ => return Err(SyntaxError::Unterminated("string escape sequence", mk_span(self.input_pos(), self.input_pos() + 1))),
         };
-        str_.push(chr);
         self.advance(2);
+        if let Some(chr) = chr {
+            bytes.push(chr);
+        }
         Ok(())
     }
 
     #[inline]
-    fn return_tokens_from_parts(&mut self, start_tok: TokenSpan, end_tok: TokenSpan, str_: String, parts: Vec<TokenSpan>) -> TokenSpan {
+    fn return_tokens_from_parts(&mut self, start_tok: TokenSpan, end_tok: TokenSpan, bytes: Vec<u8>, parts: Vec<TokenSpan>) -> TokenSpan {
         let (start_pos, end_pos) = (start_tok.1.start, end_tok.1.end);
         self.queue.push(end_tok);
-        if !str_.is_empty() {
-            self.queue.push(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), mk_span(start_pos as usize, end_pos as usize)));
+        if !bytes.is_empty() {
+            let ret_token = match String::from_utf8(bytes) {
+                Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+                Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+            };
+            self.queue.push(TokenSpan(ret_token, mk_span(start_pos as usize, end_pos as usize)));
         }
         if parts.len() > 0 {
             self.queue.extend(parts.into_iter().rev());
@@ -494,20 +506,20 @@ impl<'a> Tokenizer<'a> {
 
         // valid escapes: \ \\
         // repeatedly progress until we encounter an escape sequence (or end)
-        let mut str_ = String::new();
+        let mut bytes: Vec<u8> = vec![];
         loop {
             let end_pos = match self.input().chars().position(|x| x == '\\' || x == '\'' || x == '\n') {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
             };
-            str_.push_str(self.advance(end_pos));
+            bytes.extend(self.advance(end_pos).as_bytes());
             match self.input().chars().nth(0) {
                 Some('\n') => {
                     self.advance(1);
                     self.state.next_line();
-                    str_.push('\n');
+                    bytes.push(b'\n');
                 },
-                Some('\\') => try!(self.str_escape(&mut str_, true)),
+                Some('\\') => try!(self.str_escape(&mut bytes, true)),
                 Some('\'') => {
                     self.advance(1);
                     break;
@@ -520,10 +532,14 @@ impl<'a> Tokenizer<'a> {
             }
         }
         let span = mk_span(bak_state.src_pos, self.input_pos());
-        Ok(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), span))
+        let ret_token = match String::from_utf8(bytes) {
+            Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+            Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+        };
+        Ok(TokenSpan(ret_token, span))
     }
 
-    fn str_variable(&mut self, str_: &mut String, parts: &mut Vec<TokenSpan>) {
+    fn str_variable(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
         self.advance(1);
         if self.input().starts_with("{") {
             panic!("unimplemented: T_DOLLAR_OPEN_CURLY_BRACES: ${ ... } syntax not supported yet");
@@ -548,20 +564,23 @@ impl<'a> Tokenizer<'a> {
                 }
             }
             // and match the single variable, prepend it
-            if !str_.is_empty() {
-                let len = str_.len();
+            if !bytes.is_empty() {
+                let len = bytes.len();
                 let start = span.start - 1;
-                let old_str_fragment = self.interner.intern(&mem::replace(str_, String::new()));
-                parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(start as usize - len, start as usize)));
+                let old_fragment = match String::from_utf8(mem::replace(bytes, vec![])) {
+                    Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+                    Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+                };
+                parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start as usize)));
             }
             parts.push(TokenSpan(Token::Variable(label), mk_span(span.start as usize -1, span.end as usize)));
             parts.extend(tmp_parts);
         } else {
-            str_.push('$');
+            bytes.push(b'$');
         }
     }
 
-    fn str_block(&mut self, str_: &mut String, parts: &mut Vec<TokenSpan>) {
+    fn str_block(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
         self.advance(1);
         if self.input().starts_with('$') {
             let bak_state = self.state.clone();
@@ -573,11 +592,14 @@ impl<'a> Tokenizer<'a> {
                 tokens.push(tok);
             }
             if let Some(&TokenSpan(Token::CurlyBracesClose, _)) = tokens.last() {
-                if !str_.is_empty() {
-                    let len = str_.len();
+                if !bytes.is_empty() {
+                    let len = bytes.len();
                     let start = bak_state.src_pos - 1;
-                    let old_str_fragment = self.interner.intern(&mem::replace(str_, String::new()));
-                    parts.push(TokenSpan(Token::ConstantEncapsedString(old_str_fragment), mk_span(start as usize - len, start as usize)));
+                    let old_fragment = match String::from_utf8(mem::replace(bytes, vec![])) {
+                        Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+                        Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+                    };
+                    parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start as usize)));
                 }
                 parts.extend(tokens);
                 // undo the temporary tokenizer state transition
@@ -587,7 +609,7 @@ impl<'a> Tokenizer<'a> {
                 self.state = bak_state;
             }
         } else {
-            str_.push('{');
+            bytes.push(b'{');
         }
     }
 
@@ -608,28 +630,28 @@ impl<'a> Tokenizer<'a> {
 
         // repeatedly progress until we encounter an escape sequence (or end)
         let mut parts = vec![];
-        let mut str_ = String::new();
+        let mut bytes: Vec<u8> = vec![];
         loop {
             let end_pos = match self.input().chars().position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len() - 1,
             };
-            str_.push_str(self.advance(end_pos));
+            bytes.extend(self.advance(end_pos).as_bytes());
 
             match self.input().chars().nth(0) {
                 Some('\n') => {
                     self.advance(1);
                     self.state.next_line();
-                    str_.push('\n');
+                    bytes.push(b'\n');
                 },
-                Some('\\') => try!(self.str_escape(&mut str_, false)),
+                Some('\\') => try!(self.str_escape(&mut bytes, false)),
                 Some('"') => {
                     self.advance(1);
                     break
                 },
-                Some('$') => self.str_variable(&mut str_, &mut parts),
+                Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
-                Some('{') => self.str_block(&mut str_, &mut parts),
+                Some('{') => self.str_block(&mut bytes, &mut parts),
                 _ => {
                     let err_pos = self.input_pos();
                     self.state = bak_state_str;
@@ -641,7 +663,7 @@ impl<'a> Tokenizer<'a> {
         Ok(self.return_tokens_from_parts(
             TokenSpan(Token::DoubleQuote, mk_span(bak_state_str.src_pos, bak_state_str.src_pos + 1)),
             TokenSpan(Token::DoubleQuote, mk_span(current_pos - 1, current_pos)),
-            str_, parts
+            bytes, parts
         ))
     }
 
@@ -658,27 +680,27 @@ impl<'a> Tokenizer<'a> {
             return Err(SyntaxError::None);
         };
         let mut parts = vec![];
-        let mut str_ = String::new();
+        let mut bytes: Vec<u8> = vec![];
         loop {
             let end_pos = match self.input().chars().position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len() - 1,
             };
-            str_.push_str(self.advance(end_pos));
+            bytes.extend(self.advance(end_pos).as_bytes());
 
             match self.input().chars().nth(0) {
                 Some('\n') => {
                     self.advance(1);
                     self.state.next_line();
-                    str_.push('\n');
+                    bytes.push(b'\n');
                 },
                 Some('`') => {
                     self.advance(1);
                     break
                 },
-                Some('$') => self.str_variable(&mut str_, &mut parts),
+                Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
-                Some('{') => self.str_block(&mut str_, &mut parts),
+                Some('{') => self.str_block(&mut bytes, &mut parts),
                 _ => {
                     let old_pos = self.input_pos();
                     self.state = bak_state_str;
@@ -690,7 +712,7 @@ impl<'a> Tokenizer<'a> {
         Ok(self.return_tokens_from_parts(
             TokenSpan(Token::Backquote, mk_span(bak_state_str.src_pos, bak_state_str.src_pos + 1)),
             TokenSpan(Token::Backquote, mk_span(current_pos - 1, current_pos)),
-            str_, parts
+            bytes, parts
         ))
     }
 
@@ -751,7 +773,7 @@ impl<'a> Tokenizer<'a> {
         }
 
         // NOWDOC behaves roughly like sq_string and HEREDOC like dq_string
-        let mut str_ = String::new();
+        let mut bytes: Vec<u8> = vec![];
         let mut parts = vec![];
 
         let is_now_doc = match doc_ty {
@@ -766,7 +788,7 @@ impl<'a> Tokenizer<'a> {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
             };
-            str_.push_str(self.advance(end_pos));
+            bytes.extend(self.advance(end_pos).as_bytes());
 
             match (self.input().chars().nth(0), is_now_doc) {
                 (Some('\n'), _) => {
@@ -785,12 +807,12 @@ impl<'a> Tokenizer<'a> {
                         }
                         break
                     } else {
-                        str_.push('\n');
+                        bytes.push(b'\n');
                     }
                 },
-                (Some('\\'), _) => try!(self.str_escape(&mut str_, is_now_doc)),
-                (Some('$'), false) => self.str_variable(&mut str_, &mut parts),
-                (Some('{'), false) => self.str_block(&mut str_, &mut parts),
+                (Some('\\'), _) => try!(self.str_escape(&mut bytes, is_now_doc)),
+                (Some('$'), false) => self.str_variable(&mut bytes, &mut parts),
+                (Some('{'), false) => self.str_block(&mut bytes, &mut parts),
                 _ => {
                     let old_pos = self.input_pos();
                     self.state = bak_state_str;
@@ -801,13 +823,17 @@ impl<'a> Tokenizer<'a> {
         let span = mk_span(bak_state_str.src_pos, self.input_pos() - 1);
         if is_now_doc {
             assert!(parts.is_empty());
-            return Ok(TokenSpan(Token::ConstantEncapsedString(self.interner.intern(&str_)), mk_span(bak_state_str.src_pos, self.input_pos())));
+            let ret_token = match String::from_utf8(bytes) {
+                Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+                Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+            };
+            return Ok(TokenSpan(ret_token, mk_span(bak_state_str.src_pos, self.input_pos())));
         }
         let current_pos = self.input_pos();
         Ok(self.return_tokens_from_parts(
             TokenSpan(Token::HereDocStart, mk_span(bak_state_str.src_pos, bak_state_str.src_pos + 1)),
             TokenSpan(Token::HereDocEnd, mk_span(current_pos - 1, current_pos)),
-            str_, parts
+            bytes, parts
         ))
     }
 

@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use interner::RcStr;
 
 #[derive(Clone, Debug)]
@@ -199,6 +200,7 @@ pub enum Token {
     String(RcStr),
     /// like 'test', constant encapsed string
     ConstantEncapsedString(RcStr),
+    BinaryCharSequence(Rc<Vec<u8>>),
     InlineHtml(RcStr),
     // magic-tokens
     MagicClass,

@@ -57,7 +57,7 @@ fn parse_expr_parens() {
 fn parse_expr_string() {
     // TODO: fix line numbers of fragments (complex strings containing variables, etc.) (not tested yet)
     assert_eq!(process_expr(r#""t\nest\tsss\"os\"haha""#), enb!(0, 23, Expr_::String("t\nest\tsss\"os\"haha".into())));
-    //assert_eq!(process_expr(r#""\xe7\x9a\x84""#), enb!(0, 3, Expr_::String("的".into())));
+    assert_eq!(process_expr(r#""\xe7\x9a\x84""#), enb!(0, 14, Expr_::String("的".into())));
     //assert_eq!(process_expr(r#""a\142\143d""#), Expr_::String("abcd".into()));
     assert_eq!(process_expr(r#""a\"b\\\"c\\\"d\"e""#), enb!(0, 19, Expr_::String(r#"a"b\"c\"d"e"#.into())));
     assert_eq!(process_expr(r#""abc\ClassName""#), enb!(0, 15, Expr_::String("abc\\ClassName".into())));
@@ -203,6 +203,7 @@ fn parse_expr_static_property() {
     assert_eq!(process_expr("Obj::test()"), enb!(0,11, Expr_::Call(eb!(0,9, Expr_::StaticMember(eb!(0,3, Expr_::Path(Path::Identifier("Obj".into()))), vec![
         enb!(5,9, Expr_::Path(Path::Identifier("test".into())))
     ])), vec![])));
+    assert_eq!(process_expr("static::$abc"), enb!(0,12, Expr_::StaticMember(eb!(0,6, Expr_::Path(Path::Identifier("static".into()))), vec![ enb!(8,12, Expr_::Variable("abc".into())) ])));
 }
 
 #[test]

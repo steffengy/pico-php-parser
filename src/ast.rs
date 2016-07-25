@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::rc::Rc;
 use tokenizer::Span;
 use interner::RcStr;
 
@@ -163,9 +164,12 @@ impl Block {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
-    /// indicates the path to e.g. a namespace or is a simple identifier
+    /// indicates the path to e.g. a namespace or is a simple identifier (e.g. a runtime-constant)
     Path(Path),
+    /// a builtin (internal) constant like true, false, null or any magic-constant
+    Constant(Const),
     String(RcStr),
+    BinaryString(Rc<Vec<u8>>),
     Int(i64),
     Double(f64),
     Array(Vec<(Option<Expr>, Expr)>),
@@ -243,6 +247,24 @@ pub enum Ty {
     Double,
     String,
     Object(Option<Path>),
+}
+
+/// a builtin (internal) constant, which can be resolved at parse-time
+/// and is an essential part of the language (by design and not by declaration)
+/// TODO: use Null, True, False insteadof Path::Identifier("null" ... etc.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Const {
+    Null,
+    True,
+    False,
+    MagicClass,
+    MagicTrait,
+    MagicFunction,
+    MagicMethod,
+    MagicLine,
+    MagicFile,
+    MagicDir,
+    MagicNamespace,
 }
 
 /// A type and flag describing whether it's nullable

@@ -14,7 +14,7 @@ use tokenizer::{Tokenizer, Token, TokenSpan};
 use interner::{Interner, RcStr};
 pub use tokenizer::{Span, SyntaxError, TokenizerExternalState, mk_span};
 pub use ast::{Block, CatchClause, Expr, Expr_, IncludeTy, UnaryOp, Op, Path, SwitchCase, Stmt, Stmt_, NullableTy, Ty, TraitUse, UseClause};
-pub use ast::{Decl, FunctionDecl, ClassDecl, ParamDefinition, Member, MemberModifier, MemberModifiers, ClassModifier, ClassModifiers};
+pub use ast::{Const, Decl, FunctionDecl, ClassDecl, ParamDefinition, Member, MemberModifier, MemberModifiers, ClassModifier, ClassModifiers};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -1183,13 +1183,13 @@ impl Parser {
                 // DNUMBER
                 Token::Double(x) => Expr_::Double(x),
                 // several magic constants
-                Token::MagicLine => unimplemented!(),
-                Token::MagicFile => unimplemented!(),
-                Token::MagicDir => unimplemented!(),
-                Token::MagicTrait => unimplemented!(),
-                Token::MagicMethod => unimplemented!(),
-                Token::MagicFunction => unimplemented!(),
-                Token::MagicClass => unimplemented!(),
+                Token::MagicLine => Expr_::Constant(Const::MagicLine),
+                Token::MagicFile => Expr_::Constant(Const::MagicFile),
+                Token::MagicDir => Expr_::Constant(Const::MagicDir),
+                Token::MagicTrait => Expr_::Constant(Const::MagicTrait),
+                Token::MagicMethod => Expr_::Constant(Const::MagicMethod),
+                Token::MagicFunction => Expr_::Constant(Const::MagicFunction),
+                Token::MagicClass => Expr_::Constant(Const::MagicClass),
                 // '"' encaps_list '"'     { $$ = $2; }
                 Token::DoubleQuote => {
                     let mut ret = try!(self.parse_encaps_list());
@@ -1450,20 +1450,23 @@ impl Parser {
             _ => ()
         }
         // parse static variable declaration
-        if_lookahead!(self, Token::Static, token, {
+        fn parse_static_var_decl(p: &mut Parser, span: &Span) -> Result<Stmt, ParserError> {
             let mut vars = vec![];
             loop {
-                let var_name = if_lookahead_expect!(self, Token::Variable(_), Token::Variable(self.interner.intern("")), token, match token.0 {
+                let var_name = if_lookahead_expect!(p, Token::Variable(_), Token::Variable(p.interner.intern("")), token, match token.0 {
                     Token::Variable(var) => var,
                     _ => unreachable!(),
                 });
-                let value = if_lookahead!(self, Token::Equal, _tok, Some(try!(self.parse_expression(Precedence::None))), None);
+                let value = if_lookahead!(p, Token::Equal, _tok, Some(try!(p.parse_expression(Precedence::None))), None);
                 vars.push((var_name, value));
-                if_lookahead!(self, Token::Comma, _tok, continue, break);
+                if_lookahead!(p, Token::Comma, _tok, continue, break);
             }
-            if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
-            let span = mk_span(token.1.start as usize, self.tokens[self.pos-2].1.end as usize);
-            return Ok(Stmt(Stmt_::Decl(Decl::StaticVars(vars)), span));
+            if_lookahead_expect!(p, Token::SemiColon, Token::SemiColon);
+            let span = mk_span(span.start as usize, p.tokens[p.pos-2].1.end as usize);
+            return Ok(Stmt(Stmt_::Decl(Decl::StaticVars(vars)), span))
+        }
+        if_lookahead_restore!(self, Token::Static, token, {
+            deepest!(deepest_err, parse_static_var_decl(self, &token.1));
         });
         // function declaration statement
         if_lookahead_restore!(self, Token::Function, token, {
