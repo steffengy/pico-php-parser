@@ -387,7 +387,7 @@ fn parse_class_use_trait_complex() {
             Member::TraitUse(vec![Path::Identifier("A".into()), Path::Identifier("B".into())], vec![
                 TraitUse::InsteadOf(Path::Identifier("B".into()), "smallTalk".into(), vec![Path::Identifier("A".into())]),
                 TraitUse::InsteadOf(Path::Identifier("A".into()), "bigTalk".into(), vec![Path::Identifier("B".into())]),
-                TraitUse::As(Path::Identifier("B".into()), "bigTalk".into(), MemberModifiers::none(), Some("talk".into())),
+                TraitUse::As(Some(Path::Identifier("B".into())), "bigTalk".into(), MemberModifiers::none(), Some("talk".into())),
             ])
         ]
     }))));

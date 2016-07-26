@@ -392,6 +392,11 @@ impl<W: Write> PrettyPrinter<W> {
             }
             Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
             Expr_::Variable(ref varname) => write!(self.target, "${}", varname.borrow() as &str),
+            Expr_::FetchVariable(ref varexpr) => {
+                try!(self.write("${"));
+                try!(self.print_expression(varexpr));
+                self.write("}")
+            },
             Expr_::Reference(ref ref_expr) => {
                 try!(self.write("&"));
                 self.print_expression(ref_expr)
@@ -508,6 +513,10 @@ impl<W: Write> PrettyPrinter<W> {
                 }));
                 try!(self.write(")"));
                 self.print_expression(op)
+            },
+            Expr_::Yield(ref expr) => {
+                try!(self.write("yield "));
+                self.print_opt_expression(&expr.as_ref().map(|x| &**x))
             },
             Expr_::Function(ref decl) => {
                 try!(self.write("function "));

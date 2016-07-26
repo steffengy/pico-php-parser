@@ -70,6 +70,7 @@ fn parse_expr_string_fragmented() {
     assert_eq!(process_expr(r#""hello $wor->ld""#), enb!(0,16, Expr_::BinaryOp(Op::Concat, eb!(1,7, Expr_::String("hello ".into())), eb!(7,15, Expr_::ObjMember(
         eb!(7,11, Expr_::Variable("wor".into())), vec![ enb!(13,15, Expr_::Path(Path::Identifier("ld".into()))) ]
     )))));
+    assert_eq!(process_expr(r#""hello ${world}""#), enb!(0,16, Expr_::BinaryOp(Op::Concat, eb!(1,7, Expr_::String("hello ".into())), eb!(7,15, Expr_::Variable("world".into())))));
 }
 
 #[test]
@@ -289,7 +290,7 @@ fn parse_expr_priority_parents_call() {
     assert_eq!(process_expr("(new Factory)->test"), enb!(0,19, Expr_::ObjMember(eb!(0,13, Expr_::New(eb!(5,12, Expr_::Path(Path::Identifier("Factory".into()))), vec![])),
         vec![ enb!(15,19, Expr_::Path(Path::Identifier("test".into()))) ]
     )));
-    /*assert_eq!(process_expr("(new $obj)->method()"), enb!(None, Expr_::Call(eb!(10,12, Expr_::ObjMember(eb!(1,4, Expr_::New(eb!(5,9, Expr_::Variable("obj".into())), vec![])),
+    assert_eq!(process_expr("(new $obj)->method()"), enb!(0,20, Expr_::Call(eb!(0,18, Expr_::ObjMember(eb!(0,10, Expr_::New(eb!(5,9, Expr_::Variable("obj".into())), vec![])),
         vec![ enb!(12,18, Expr_::Path(Path::Identifier("method".into()))) ]
-    )), vec![])));*/
+    )), vec![])));
 }

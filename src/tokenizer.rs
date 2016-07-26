@@ -541,8 +541,24 @@ impl<'a> Tokenizer<'a> {
 
     fn str_variable(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
         self.advance(1);
+        // T_DOLLAR_OPEN_CURLY_BRACES ${ ... } syntax (simple = DollarCurlyBraces, complex = str_block)
         if self.input().starts_with("{") {
-            panic!("unimplemented: T_DOLLAR_OPEN_CURLY_BRACES: ${ ... } syntax not supported yet");
+            let pos = self.input_pos() - 1;
+            if !bytes.is_empty() {
+                let len = bytes.len();
+                let old_fragment = match String::from_utf8(mem::replace(bytes, vec![])) {
+                    Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
+                    Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
+                };
+                parts.push(TokenSpan(old_fragment, mk_span(pos as usize - len, pos as usize)));
+            }
+            let next_part = parts.len();
+            self.str_block(bytes, parts, false);
+            // patch the CurlyBracesOpen token
+            assert_eq!(parts[next_part].0, Token::CurlyBracesOpen);
+            parts[next_part].1.start -= 1;
+            parts[next_part].0 = Token::DollarCurlyBracesOpen;
+            return;
         }
         // match variable
         if let Some((label, span)) = self._label().map(|(x, span)| (self.interner.intern(x), span)) {
@@ -580,9 +596,9 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn str_block(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
+    fn str_block(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>, require_dollar: bool) {
         self.advance(1);
-        if self.input().starts_with('$') {
+        if self.input().starts_with('$') || !require_dollar {
             let bak_state = self.state.clone();
             // temporary state transition to use the same instance to match
             self.state.state = State::InScripting;
@@ -651,7 +667,7 @@ impl<'a> Tokenizer<'a> {
                 },
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
-                Some('{') => self.str_block(&mut bytes, &mut parts),
+                Some('{') => self.str_block(&mut bytes, &mut parts, true),
                 _ => {
                     let err_pos = self.input_pos();
                     self.state = bak_state_str;
@@ -700,7 +716,7 @@ impl<'a> Tokenizer<'a> {
                 },
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
-                Some('{') => self.str_block(&mut bytes, &mut parts),
+                Some('{') => self.str_block(&mut bytes, &mut parts, true),
                 _ => {
                     let old_pos = self.input_pos();
                     self.state = bak_state_str;
@@ -784,7 +800,7 @@ impl<'a> Tokenizer<'a> {
         // match characters until we find the required end_tag
         let end_tag = label;
         loop {
-            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
+            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
             };
@@ -812,7 +828,7 @@ impl<'a> Tokenizer<'a> {
                 },
                 (Some('\\'), _) => try!(self.str_escape(&mut bytes, is_now_doc)),
                 (Some('$'), false) => self.str_variable(&mut bytes, &mut parts),
-                (Some('{'), false) => self.str_block(&mut bytes, &mut parts),
+                (Some('{'), false) => self.str_block(&mut bytes, &mut parts, true),
                 _ => {
                     let old_pos = self.input_pos();
                     self.state = bak_state_str;

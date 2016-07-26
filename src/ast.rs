@@ -174,6 +174,8 @@ pub enum Expr_ {
     Double(f64),
     Array(Vec<(Option<Expr>, Expr)>),
     Variable(RcStr),
+    /// something like $$test, where another expression contains the name of the variable to be fetched
+    FetchVariable(Box<Expr>),
     Reference(Box<Expr>),
     Clone(Box<Expr>),
     Isset(Vec<Expr>),
@@ -190,6 +192,7 @@ pub enum Expr_ {
     BinaryOp(Op, Box<Expr>, Box<Expr>),
     InstanceOf(Box<Expr>, Box<Expr>),
     Cast(Ty, Box<Expr>),
+    Yield(Option<Box<Expr>>),
     /// an anonymous function
     Function(FunctionDecl),
 
@@ -282,7 +285,7 @@ pub enum IncludeTy {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TraitUse {
     InsteadOf(Path, RcStr, Vec<Path>),
-    As(Path, RcStr, MemberModifiers, Option<RcStr>),
+    As(Option<Path>, RcStr, MemberModifiers, Option<RcStr>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

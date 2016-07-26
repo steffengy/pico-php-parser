@@ -72,6 +72,7 @@ pub enum Token {
     Gt,
     QuestionMark,
     Silence,
+    DollarCurlyBracesOpen,
     CurlyBracesOpen,
     CurlyBracesClose,
     /// `
