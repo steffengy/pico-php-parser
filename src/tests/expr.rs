@@ -281,7 +281,7 @@ fn parse_expr_assoc_array() {
 fn parse_expr_closure() {
     assert_eq!(process_expr("function () { c(); }"), enb!(0,20, Expr_::Function(FunctionDecl {
         params: vec![],
-        body: Block(vec![ senb!(14,17, Expr_::Call(eb!(14,15, Expr_::Path(Path::Identifier("c".into()))), vec![])) ]), usev: vec![], ret_ref: false,
+        body: Some(Block(vec![ senb!(14,17, Expr_::Call(eb!(14,15, Expr_::Path(Path::Identifier("c".into()))), vec![])) ])), usev: vec![], ret_ref: false,
     })));
 }
 

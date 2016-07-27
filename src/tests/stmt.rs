@@ -258,18 +258,18 @@ fn parse_stmt_switch() {
 #[test]
 fn parse_stmt_func_decl() {
     assert_eq!(process_stmt("function test() { ok(); }"), st!(0,25, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: Block(vec![ senb!(18,22, Expr_::Call(eb!(18,20, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(18,22, Expr_::Call(eb!(18,20, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
     assert_eq!(process_stmt("function &test() { ok(); }"), st!(0,26, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: Block(vec![ senb!(19,23, Expr_::Call(eb!(19,21, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]), usev: vec![], ret_ref: true, })
+        body: Some(Block(vec![ senb!(19,23, Expr_::Call(eb!(19,21, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: true, })
     )));
     assert_eq!(process_stmt("function test($a) { ok(); }"), st!(0,27, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None }],
-        body: Block(vec![ senb!(20,24, Expr_::Call(eb!(20,22, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(20,24, Expr_::Call(eb!(20,22, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), st!(0,31, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None }, ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: None }],
-        body: Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
 
@@ -277,7 +277,7 @@ fn parse_stmt_func_decl() {
 fn parse_func_decl_typehint() {
     assert_eq!(process_stmt("function test(Test $a) { ok(); }"), st!(0,32, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Some(Path::Identifier("Test".into())))), default: None } ],
-        body: Block(vec![ senb!(25,29, Expr_::Call(eb!(25,27, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(25,29, Expr_::Call(eb!(25,27, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
 
@@ -322,7 +322,7 @@ fn parse_class_methods() {
     assert_eq!(process_stmt("class Test { public function a() { run(); } }"), st!(0,45, Stmt_::Decl(Decl::Class(ClassDecl {
         cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![],
         members: vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]), "a".into(), FunctionDecl {
-            params: vec![], body: Block(vec![ senb!(35,40, Expr_::Call(eb!(35,38, Expr_::Path(Path::Identifier("run".into()))), vec![])) ]),
+            params: vec![], body: Some(Block(vec![ senb!(35,40, Expr_::Call(eb!(35,38, Expr_::Path(Path::Identifier("run".into()))), vec![])) ])),
             usev: vec![], ret_ref: false,
         })]
     }))));
@@ -331,9 +331,9 @@ fn parse_class_methods() {
             cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![],
             members: vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]), "__construct".into(), FunctionDecl {
                 params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Some(enb!(57,59, Expr_::Array(vec![]))) }],
-                body: Block(vec![ senb!(63,85, Expr_::Assign(eb!(63,75, Expr_::ObjMember(eb!(63,68, Expr_::Variable("this".into())), vec![
+                body: Some(Block(vec![ senb!(63,85, Expr_::Assign(eb!(63,75, Expr_::ObjMember(eb!(63,68, Expr_::Variable("this".into())), vec![
                     enb!(70,75, Expr_::Path(Path::Identifier("param".into()))) ])), eb!(78,85, Expr_::Variable("param1".into()))))
-                ]), usev: vec![], ret_ref: false,
+                ])), usev: vec![], ret_ref: false,
             })]
         })))
     );
@@ -367,7 +367,7 @@ fn parse_interface_decl() {
     assert_eq!(process_stmt("interface ITest {}"), st!(0,18, Stmt_::Decl(Decl::Interface("ITest".into(), vec![], vec![]))));
     assert_eq!(process_stmt("interface ITest { public function test(); }"), st!(0,43, Stmt_::Decl(
         Decl::Interface("ITest".into(), vec![], vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]),
-            "test".into(), FunctionDecl {params: vec![], body: Block(vec![]), usev: vec![], ret_ref: false})
+            "test".into(), FunctionDecl {params: vec![], body: None, usev: vec![], ret_ref: false})
         ])
     )));
 }
@@ -401,7 +401,7 @@ fn parse_static_decl() {
 #[test]
 fn parse_stmt_closure_use() {
     assert_eq!(process_stmt("return function () use ($t) {};"), st!(0,31, Stmt_::Return(Some(eb!(7,30, Expr_::Function(FunctionDecl {
-        params: vec![], body: Block(vec![]), usev: vec![(false, "t".into())], ret_ref: false,
+        params: vec![], body: Some(Block(vec![])), usev: vec![(false, "t".into())], ret_ref: false,
     }))))));
 }
 
