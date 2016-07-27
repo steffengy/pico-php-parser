@@ -710,13 +710,13 @@ impl Parser {
                     return Err(err)
                 }
             });
-            (body, stmts_err)
+            (Some(Block(body)), stmts_err)
         } else {
-            (vec![], None, )
+            (None, None)
         };
         let decl = FunctionDecl {
             params: params,
-            body: Block(body),
+            body: body,
             usev: use_variables,
             ret_ref: returns_ref,
         };

@@ -85,8 +85,8 @@ pub enum Visibility {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ClassModifier {
-    Abstract,
-    Final,
+    Abstract = 1<<0,
+    Final = 1<<1,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -301,7 +301,7 @@ pub struct ParamDefinition {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDecl {
     pub params: Vec<ParamDefinition>,
-    pub body: Block,
+    pub body: Option<Block>,
     /// A list of variables to pass from the parent scope to the scope of this function
     /// So variables which are basically available shared into this function's scope
     /// the boolean indicates whether to bind by-reference (true)

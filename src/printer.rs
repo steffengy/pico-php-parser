@@ -2,7 +2,7 @@
 use std::fmt::{self, Write};
 use std::borrow::Borrow;
 use tokens::Token;
-use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, UseClause};
+use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
 use ast::{CatchClause, SwitchCase, Member, MemberModifiers, MemberModifier};
 
 pub struct PrettyPrinter<W: Write> {
@@ -53,10 +53,11 @@ impl<W: Write> PrettyPrinter<W> {
     }
 
     fn print_member_body(&mut self, members: &[Member]) -> fmt::Result {
-        try!(self.write("{\n"));
+        try!(self.write(" {\n"));
         self.indentation += 1;
         for member in members {
             try!(self.print_member(member));
+            try!(self.write("\n"));
         }
         self.indentation -= 1;
         self.write_indented("}")
@@ -70,6 +71,7 @@ impl<W: Write> PrettyPrinter<W> {
                 self.write(";\n")
             },
             Decl::GlobalFunction(ref name, ref decl) => {
+                try!(self.write_indented(""));
                 self.print_function(decl, Some(name.borrow()))
             },
             Decl::Class(ref classdecl) => {
@@ -80,7 +82,7 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write(" "));
                 if let Some(ref base_class) = classdecl.base_class {
                     try!(self.write("extends "));
-                    try!(write!(self.target, "{}", base_class));
+                    try!(write!(self.target, "{} ", base_class));
                 }
                 if !classdecl.implements.is_empty() {
                     try!(self.write("implements "));
@@ -131,19 +133,20 @@ impl<W: Write> PrettyPrinter<W> {
         try!(self.write_indented(""));
         match *member {
             Member::Constant(ref modifiers, ref name, ref value) => {
-                try!(write!(self.target, "{} ", modifiers));
+                try!(write!(self.target, "{} const ", modifiers));
                 try!(self.write(name.borrow()));
                 try!(self.write("="));
-                self.print_expression(value)
+                try!(self.print_expression(value));
+                self.write(";")
             },
             Member::Property(ref modifiers, ref name, ref value) => {
-                try!(write!(self.target, "{} ", modifiers));
+                try!(write!(self.target, "{} $", modifiers));
                 try!(self.write(name.borrow()));
                 if let Some(ref default) = *value {
                     try!(self.write("="));
                     try!(self.print_expression(default));
                 }
-                Ok(())
+                self.write(";")
             },
             Member::Method(ref modifiers, ref name, ref decl) => {
                 try!(write!(self.target, "{} ", modifiers));
@@ -157,7 +160,38 @@ impl<W: Write> PrettyPrinter<W> {
                     }
                     try!(write!(self.target, "{}", name));
                 }
-                assert_eq!(uses.len(), 0);
+                if uses.len() > 0 {
+                    try!(self.write("{\n"));
+                    for use_ in uses {
+                        match *use_ {
+                            TraitUse::As(ref path, ref method, ref modifiers, ref alias) => {
+                                if let Some(ref path) = *path {
+                                    try!(write!(self.target, "{}::", path));
+                                }
+                                try!(self.write(method.borrow()));
+                                try!(self.write(" as "));
+                                try!(write!(self.target, "{} ", modifiers));
+                                if let Some(ref alias) = *alias {
+                                    try!(self.write(alias.borrow()));
+                                }
+                            },
+                            TraitUse::InsteadOf(ref path, ref method, ref names) => {
+                                try!(write!(self.target, "{}::", path));
+                                try!(self.write(method.borrow()));
+                                try!(self.write(" insteadof "));
+                                for (i, name) in names.iter().enumerate() {
+                                    if i > 0 {
+                                        try!(self.write(", "));
+                                    }
+                                    try!(write!(self.target, "{}", name));
+                                }
+                            },
+                        }
+                    }
+                    try!(self.write("}\n"));
+                } else {
+                    try!(self.write(";\n"));
+                }
                 Ok(())
             }
         }
@@ -192,14 +226,16 @@ impl<W: Write> PrettyPrinter<W> {
             if param.as_ref {
                 try!(self.write("&"));
             }
+            try!(self.write("$"));
             try!(self.write(param.name.borrow()));
             if let Some(ref default) = param.default {
                 try!(self.write("="));
                 try!(self.print_expression(default));
             }
         }
+        try!(self.write(") "));
         if !func.usev.is_empty() {
-            try!(self.write(" use ("));
+            try!(self.write("use ("));
             for (i, &(ref by_ref, ref var)) in func.usev.iter().enumerate() {
                 if i > 0 {
                     try!(self.write(", "));
@@ -210,8 +246,13 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write("$"));
                 try!(self.write(var.borrow()));
             }
+            try!(self.write(") "));
         }
-        self.print_block(&func.body)
+        if let Some(ref body) = func.body {
+            self.print_block(body)
+        } else {
+            self.write(";")
+        }
     }
 
     fn print_use(&mut self, clauses: &[UseClause]) -> fmt::Result {
@@ -278,7 +319,7 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write(") "));
                 try!(self.print_block(bl));
                 if !else_bl.is_empty() {
-                    try!(self.write("else "));
+                    try!(self.write_indented("else "));
                     try!(self.print_block(else_bl));
                 }
                 Ok(())
@@ -309,9 +350,10 @@ impl<W: Write> PrettyPrinter<W> {
             Stmt_::ForEach(ref base, ref k, ref v, ref bl) => {
                 try!(self.write_indented("foreach ("));
                 try!(self.print_expression(base));
+                try!(self.write(" as "));
                 if let Some(ref k) = *k {
                     try!(self.print_expression(k));
-                    try!(self.write("=>"));
+                    try!(self.write(" => "));
                 }
                 try!(self.print_expression(v));
                 try!(self.write(") "));
@@ -356,7 +398,8 @@ impl<W: Write> PrettyPrinter<W> {
                     }
                     self.indentation -= 1;
                 }
-                Ok(())
+                self.indentation -= 1;
+                self.write("}\n")
             }
         }
     }
@@ -368,20 +411,46 @@ impl<W: Write> PrettyPrinter<W> {
         }
     }
 
+    fn print_expression_curly_parens(&mut self, expr: &Expr, curly: bool) -> fmt::Result {
+        let (parens_open, parens_close) = if curly { ("{", "}") } else { ("(", ")") };
+
+        let wrap_in_parens = match expr.0 {
+            Expr_::BinaryOp(_, _, _) => true,
+            Expr_::UnaryOp(_, _) => true,
+            Expr_::New(_, _) => true,
+            Expr_::ArrayIdx(_, _) | Expr_::ObjMember(_, _) | Expr_::StaticMember(_, _) | Expr_::Call(_, _) => true,
+            _ => false,
+        };
+
+        if wrap_in_parens {
+            try!(self.write(parens_open));
+        }
+        try!(self.print_expression(expr));
+        if wrap_in_parens {
+            try!(self.write(parens_close));
+        }
+        Ok(())
+    }
+
+    fn print_expression_parens(&mut self, expr: &Expr) -> fmt::Result {
+        self.print_expression_curly_parens(expr, false)
+    }
+
     fn print_expression(&mut self, expr: &Expr) -> fmt::Result {
         match expr.0 {
             Expr_::Path(ref path) => write!(self.target, "{}", path),
             Expr_::String(ref str_) => {
-                try!(self.write("\""));
-                try!(write!(self.target, "{:?}", str_));
-                self.write("\"")
+                write!(self.target, "{:?}", str_.borrow() as &str)
             },
             Expr_::BinaryString(ref str_) => unimplemented!(),
             Expr_::Int(ref i) => write!(self.target, "{}", i),
             Expr_::Double(ref d) => write!(self.target, "{}", d),
             Expr_::Array(ref arr) => {
                 try!(self.write("array("));
-                for &(ref k, ref v) in arr {
+                for (i, &(ref k, ref v)) in arr.iter().enumerate() {
+                    if i > 0 {
+                        try!(self.write(", "));
+                    }
                     if let Some(ref k) = *k {
                         try!(self.print_expression(k));
                         try!(self.write(" => "));
@@ -393,9 +462,8 @@ impl<W: Write> PrettyPrinter<W> {
             Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
             Expr_::Variable(ref varname) => write!(self.target, "${}", varname.borrow() as &str),
             Expr_::FetchVariable(ref varexpr) => {
-                try!(self.write("${"));
-                try!(self.print_expression(varexpr));
-                self.write("}")
+                try!(self.write("$"));
+                self.print_expression(varexpr)
             },
             Expr_::Reference(ref ref_expr) => {
                 try!(self.write("&"));
@@ -431,7 +499,7 @@ impl<W: Write> PrettyPrinter<W> {
                 self.print_expression(arg)
             },
             Expr_::ArrayIdx(ref base, ref idxs) => {
-                try!(self.print_expression(base));
+                try!(self.print_expression_parens(base));
                 for idx in idxs {
                     try!(self.write("["));
                     try!(self.print_expression(idx));
@@ -440,18 +508,18 @@ impl<W: Write> PrettyPrinter<W> {
                 Ok(())
             },
             Expr_::ObjMember(ref base, ref idxs) => {
-                try!(self.print_expression(base));
+                try!(self.print_expression_parens(base));
                 for idx in idxs {
                     try!(self.write("->"));
-                    try!(self.print_expression(idx));
+                    try!(self.print_expression_curly_parens(idx, true));
                 }
                 Ok(())
             },
             Expr_::StaticMember(ref base, ref idxs) => {
-                try!(self.print_expression(base));
+                try!(self.print_expression_parens(base));
                 for idx in idxs {
                     try!(self.write("::"));
-                    try!(self.print_expression(idx));
+                    try!(self.print_expression_parens(idx));
                 }
                 Ok(())
             },
@@ -518,10 +586,7 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write("yield "));
                 self.print_opt_expression(&expr.as_ref().map(|x| &**x))
             },
-            Expr_::Function(ref decl) => {
-                try!(self.write("function "));
-                self.print_function(decl, None)
-            },
+            Expr_::Function(ref decl) => self.print_function(decl, None),
             Expr_::Assign(ref target, ref value) => {
                 try!(self.print_expression(target));
                 try!(self.write("="));
@@ -537,7 +602,20 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write("=&"));
                 self.print_expression(value)
             },
-            Expr_::List(ref parts) => unimplemented!(),
+            Expr_::List(ref parts) => {
+                try!(self.write("list("));
+                for (i, &(ref key, ref value)) in parts.iter().enumerate() {
+                    if i > 0 {
+                        try!(self.write(", "));
+                    }
+                    if let Some(ref key) = *key {
+                        try!(self.print_expression(key));
+                        try!(self.write(" => "));
+                    }
+                    try!(self.print_expression(value));
+                }
+                self.write(")")
+            },
             Expr_::TernaryIf(ref base, ref case_true, ref case_else) => {
                 try!(self.print_expression(base));
                 try!(self.write("?"));
