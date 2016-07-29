@@ -5,6 +5,48 @@ use tokens::Token;
 use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
 use ast::{CatchClause, SwitchCase, Member, MemberModifiers, MemberModifier};
 
+pub struct LiteralStringEscape {
+    state: LiteralStringEscapeState
+}
+
+enum LiteralStringEscapeState {
+    Backslash(char),
+    Char(char),
+    Done,
+}
+
+impl Iterator for LiteralStringEscape {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        match self.state {
+            LiteralStringEscapeState::Backslash(c) => {
+                self.state = LiteralStringEscapeState::Char(c);
+                Some('\\')
+            }
+            LiteralStringEscapeState::Char(c) => {
+                self.state = LiteralStringEscapeState::Done;
+                Some(c)
+            }
+            LiteralStringEscapeState::Done => None,
+        }
+    }
+}
+
+trait EscapeLiteralString {
+    fn escape_literal_string(self) -> LiteralStringEscape;
+}
+
+impl EscapeLiteralString for char {
+    fn escape_literal_string(self) -> LiteralStringEscape {
+        let init_state = match self {
+            '\\' | '\'' => LiteralStringEscapeState::Backslash(self),
+            _ => LiteralStringEscapeState::Char(self)
+        };
+        LiteralStringEscape { state: init_state }
+    }
+}
+
 pub struct PrettyPrinter<W: Write> {
     indentation: usize,
     target: W,
@@ -162,7 +204,9 @@ impl<W: Write> PrettyPrinter<W> {
                 }
                 if uses.len() > 0 {
                     try!(self.write("{\n"));
+                    self.indentation += 1;
                     for use_ in uses {
+                        try!(self.write_indented(""));
                         match *use_ {
                             TraitUse::As(ref path, ref method, ref modifiers, ref alias) => {
                                 if let Some(ref path) = *path {
@@ -187,8 +231,10 @@ impl<W: Write> PrettyPrinter<W> {
                                 }
                             },
                         }
+                        try!(self.write(";\n"));
                     }
-                    try!(self.write("}\n"));
+                    self.indentation -= 1;
+                    try!(self.write_indented("}\n"));
                 } else {
                     try!(self.write(";\n"));
                 }
@@ -419,6 +465,7 @@ impl<W: Write> PrettyPrinter<W> {
             Expr_::UnaryOp(_, _) => true,
             Expr_::New(_, _) => true,
             Expr_::ArrayIdx(_, _) | Expr_::ObjMember(_, _) | Expr_::StaticMember(_, _) | Expr_::Call(_, _) => true,
+            Expr_::TernaryIf(_, _, _) => true,
             _ => false,
         };
 
@@ -440,7 +487,7 @@ impl<W: Write> PrettyPrinter<W> {
         match expr.0 {
             Expr_::Path(ref path) => write!(self.target, "{}", path),
             Expr_::String(ref str_) => {
-                write!(self.target, "{:?}", str_.borrow() as &str)
+                write!(self.target, "'{}'", (str_.borrow() as &str).chars().flat_map(|x| x.escape_literal_string()).collect::<String>())
             },
             Expr_::BinaryString(ref str_) => unimplemented!(),
             Expr_::Int(ref i) => write!(self.target, "{}", i),
