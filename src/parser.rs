@@ -524,22 +524,15 @@ impl Parser {
             // array indexing
             if_lookahead!(self, Token::SquareBracketOpen, _tok, match self.parse_opt_expression(Precedence::None) {
                 Err(x) => return Err(x),
-                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, match expr {
-                    Some(expr) => {
-                        if let Expr(Expr_::ArrayIdx(_, ref mut idxs), ref mut span) = var_expr {
-                            span.end = self.tokens[self.pos-1].1.end;
-                            idxs.push(expr);
-                        } else {
-                            let span = mk_span(var_expr.1.start as usize, self.tokens[self.pos-1].1.end as usize);
-                            var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), span);
-                        }
-                        continue
-                    },
-                    None => {
+                Ok(expr) => if_lookahead!(self, Token::SquareBracketClose, _tok, {
+                    if let Expr(Expr_::ArrayIdx(_, ref mut idxs), ref mut span) = var_expr {
+                        span.end = self.tokens[self.pos-1].1.end;
+                        idxs.push(expr);
+                    } else {
                         let span = mk_span(var_expr.1.start as usize, self.tokens[self.pos-1].1.end as usize);
-                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![]), span);
-                        continue;
+                        var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), span);
                     }
+                    continue;
                 }),
             });
             // object property indexing

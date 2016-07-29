@@ -502,7 +502,7 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.print_expression_parens(base));
                 for idx in idxs {
                     try!(self.write("["));
-                    try!(self.print_expression(idx));
+                    try!(self.print_opt_expression(&idx.as_ref()));
                     try!(self.write("]"));
                 }
                 Ok(())

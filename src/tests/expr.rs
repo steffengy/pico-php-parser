@@ -31,9 +31,9 @@ fn parse_expr_op() {
     )));
     assert_eq!(process_expr(r#"$g["a"]-$g["b"]/3"#), enb!(0,17, Expr_::BinaryOp(
         Op::Sub,
-        eb!(0,7, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ enb!(3,6, Expr_::String("a".into())) ])),
+        eb!(0,7, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ Some(enb!(3,6, Expr_::String("a".into()))) ])),
         eb!(8,17, Expr_::BinaryOp(Op::Div, eb!(8,15, Expr_::ArrayIdx(eb!(8,10, Expr_::Variable("g".into())), vec![
-            enb!(11,14, Expr_::String("b".into())) ])), eb!(16,17, Expr_::Int(3)))
+            Some(enb!(11,14, Expr_::String("b".into()))) ])), eb!(16,17, Expr_::Int(3)))
         )
     )));
 }
@@ -119,15 +119,15 @@ fn parse_expr_object_property() {
 
 #[test]
 fn parse_expr_array_idx() {
-    assert_eq!(process_expr(r#"$test["a"]"#), enb!(0,10, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![ enb!(6,9, Expr_::String("a".into())) ])));
-    assert_eq!(process_expr(r#"$test[9]"#), enb!(0,8, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![ enb!(6,7, Expr_::Int(9)) ])));
+    assert_eq!(process_expr(r#"$test["a"]"#), enb!(0,10, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![ Some(enb!(6,9, Expr_::String("a".into()))) ])));
+    assert_eq!(process_expr(r#"$test[9]"#), enb!(0,8, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![ Some(enb!(6,7, Expr_::Int(9))) ])));
     assert_eq!(process_expr(r#"$test["a"]['b\n']"#), enb!(0,17, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![
-        enb!(6,9, Expr_::String("a".into())), enb!(11,16, Expr_::String("b\\n".into()))
+        Some(enb!(6,9, Expr_::String("a".into()))), Some(enb!(11,16, Expr_::String("b\\n".into())))
     ])));
     assert_eq!(process_expr(r#"$test[$g["a"]]["b"]["c"]"#), enb!(0,24, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![
-        enb!(6,13, Expr_::ArrayIdx(eb!(6, 8, Expr_::Variable("g".into())), vec![ enb!(9,12,Expr_::String("a".into())) ] )),
-        enb!(15,18, Expr_::String("b".into())),
-        enb!(20,23, Expr_::String("c".into()))
+        Some(enb!(6,13, Expr_::ArrayIdx(eb!(6, 8, Expr_::Variable("g".into())), vec![ Some(enb!(9,12,Expr_::String("a".into()))) ] ))),
+        Some(enb!(15,18, Expr_::String("b".into()))),
+        Some(enb!(20,23, Expr_::String("c".into())))
     ])));
 }
 
@@ -142,13 +142,14 @@ fn parse_expr_func_call() {
         enb!(7,13, Expr_::Call(eb!(7,10, Expr_::Path(Path::Identifier("abc".into()))), vec![ enb!(11,12, Expr_::Int(1)) ])),
         enb!(15, 16, Expr_::Int(2))
     ])));
-    assert_eq!(process_expr(r#"$g[0]()"#), enb!(0,7, Expr_::Call(eb!(0,5, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ enb!(3,4, Expr_::Int(0)) ])), vec![])));
+    assert_eq!(process_expr(r#"$g[0]()"#), enb!(0,7, Expr_::Call(eb!(0,5, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![
+        Some(enb!(3,4, Expr_::Int(0))) ])), vec![])));
     assert_eq!(process_expr(r#"$g[0]()[1](true)"#), enb!(0,16, Expr_::Call(
         eb!(0,10, Expr_::ArrayIdx(
             eb!(0,7, Expr_::Call(
-                eb!(0,5, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ enb!(3,4, Expr_::Int(0)) ])),
+                eb!(0,5, Expr_::ArrayIdx(eb!(0,2, Expr_::Variable("g".into())), vec![ Some(enb!(3,4, Expr_::Int(0))) ])),
                 vec![]
-            )), vec![ enb!(8,9, Expr_::Int(1)) ]
+            )), vec![ Some(enb!(8,9, Expr_::Int(1))) ]
         )), vec![ enb!(11,15, constant!(true)) ]
     )));
 }
@@ -240,7 +241,7 @@ fn parse_expr_clone() {
 #[test]
 fn parse_expr_array_append() {
     // for now we support append-expressions like that, TODO: figure out error reporting (AST_Node -> Position in source file)
-    assert_eq!(process_expr(r#"$test[]=1"#), enb!(0,9, Expr_::Assign(eb!(0,7, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![])),
+    assert_eq!(process_expr(r#"$test[]=1"#), enb!(0,9, Expr_::Assign(eb!(0,7, Expr_::ArrayIdx(eb!(0,5, Expr_::Variable("test".into())), vec![ None ])),
         eb!(8,9, Expr_::Int(1))
     )));
 }

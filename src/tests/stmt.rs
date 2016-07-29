@@ -76,7 +76,7 @@ fn parse_stmt_assignment() {
     assert_eq!(process_stmt(r#"$test["a"]=4+$b;"#), senb!(0,15, Expr_::Assign(eb!(0,10,
         Expr_::ArrayIdx(
             eb!(0,5, Expr_::Variable("test".into())),
-            vec![ enb!(6,9, Expr_::String("a".into())) ]
+            vec![ Some(enb!(6,9, Expr_::String("a".into()))) ]
         )),
         eb!(11,15, Expr_::BinaryOp(Op::Add, eb!(11, 12, Expr_::Int(4)), eb!(13,15, Expr_::Variable("b".into()))))
     )));

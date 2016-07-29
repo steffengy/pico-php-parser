@@ -183,7 +183,7 @@ pub enum Expr_ {
     Exit(Option<Box<Expr>>),
 
     Include(IncludeTy, Box<Expr>),
-    ArrayIdx(Box<Expr>, Vec<Expr>),
+    ArrayIdx(Box<Expr>, Vec<Option<Expr>>),
     ObjMember(Box<Expr>, Vec<Expr>),
     StaticMember(Box<Expr>, Vec<Expr>),
     Call(Box<Expr>, Vec<Expr>),
