@@ -1,0 +1,35 @@
+language: rust
+
+cache:
+  cargo: true
+  directories:
+    - $HOME/.composer/cache
+
+matrix:
+  include:
+    - rust: stable
+    - rust: stable
+      env:
+        - TEST_PROJECT=laravel
+      sudo: required
+      dist: trusty
+    - rust: beta
+    - rust: nightly
+
+install:
+  - >
+    if [ -n "$TEST_PROJECT" ]; then
+      docker build -t pico_builder ci
+    fi
+
+script:
+  - |
+    if [ -n "$TEST_PROJECT" ]; then
+      pushd ./ci/tester
+      cargo build
+      popd
+      docker run -e "TEST_PROJECT=$TEST_PROJECT" -v $HOME/.composer:/root/.composer -v $(readlink -f ./ci):/ci pico_builder /ci/test_projects.sh
+    else
+      cargo build --verbose
+      cargo test --verbose
+    fi

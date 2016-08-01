@@ -1,6 +1,4 @@
-#![feature(test)]
 #![recursion_limit="420"]
-extern crate test;
 extern crate fnv;
 
 mod interner;

@@ -1226,7 +1226,6 @@ impl<'a> Tokenizer<'a> {
 mod tests {
     use super::{State};
     use super::*;
-    use test::Bencher;
 
     macro_rules! assert_eq_tok {
         ($a:expr, $b:expr) => {assert_eq!($a.map(|x| x.0), $b)};
@@ -1407,17 +1406,4 @@ mod tests {
 
     // TODO: use own error type?
     // TODO: error handling tests
-
-    #[bench]
-    fn bench_simple_set_of_variables(b: &mut Bencher) {
-        let argc: usize = 10000;
-        let mut inp = "<?php ".to_owned();
-        for i in 0..argc {
-            inp.push_str("$tte");
-        }
-        b.iter(|| {
-            let mut tokenizer = Tokenizer::new(&inp);
-            assert_eq!(get_n_tokens(&mut tokenizer, argc).len(), argc);
-        });
-    }
 }
