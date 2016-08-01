@@ -17,12 +17,21 @@ pub enum UseClause {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Path {
-    Identifier(RcStr),
-    /// An identifier which is prefixed by a namespace (e.g. a FQDN-class-path)
-    /// fragment.1 = The namespace
-    /// fragment.2 = The class
-    NsIdentifier(RcStr, RcStr),
+pub struct Path {
+    pub is_absolute: bool,
+    pub namespace: Option<RcStr>,
+    /// mostly something like the trait or class name
+    pub identifier: RcStr,
+}
+
+impl Path {
+    pub fn identifier(absolute: bool, name: RcStr) -> Path {
+        Path { namespace: None, identifier: name, is_absolute: absolute }
+    }
+
+    pub fn ns_identifier(absolute: bool, namespace: RcStr, name: RcStr) -> Path {
+        Path { namespace: Some(namespace), identifier: name, is_absolute: absolute }
+    }
 }
 
 /// binary operators

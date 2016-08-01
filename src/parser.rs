@@ -424,7 +424,7 @@ impl Parser {
         let err1 = alt!(self.parse_simple_variable());
         if_lookahead!(self, Token::String(_), token, {
             return Ok(match token.0 {
-                Token::String(str_) => Expr(Expr_::Path(Path::Identifier(str_.into())), token.1),
+                Token::String(str_) => Expr(Expr_::Path(Path::identifier(false, str_.into())), token.1),
                 _ => unreachable!(),
             })
         });
@@ -850,7 +850,7 @@ impl Parser {
                 _ => None,
             };
             if let Some(cast_ty) = cast_ty {
-                let expr = try!(self.parse_expression(Precedence::None));
+                let expr = try!(self.parse_expression(Precedence::Unary));
                 span.end = expr.1.end;
                 return Ok(Expr(Expr_::Cast(cast_ty, Box::new(expr)), span));
             }
@@ -995,10 +995,10 @@ impl Parser {
                 let span = Span { start: fragments.first().map(|x| x.1.start).unwrap(), end: fragments.last().map(|x| x.1.end).unwrap(), ..Span::new() };
                 return Ok((match fragments.len() {
                     0 => unreachable!(),
-                    1 => Path::Identifier(fragments.pop().map(|x| x.0.into()).unwrap()),
+                    1 => Path::identifier(false, fragments.pop().map(|x| x.0.into()).unwrap()),
                     _ => {
                         let identifier = fragments.pop().unwrap();
-                        Path::NsIdentifier(self.interner.intern(&fragments.into_iter().enumerate().fold(String::new(), |acc, (i, el)| {
+                        Path::ns_identifier(false, self.interner.intern(&fragments.into_iter().enumerate().fold(String::new(), |acc, (i, el)| {
                             acc + if i > 0 { "\\" } else { "" } + el.0.borrow()
                         })), identifier.0.into())
                     }
@@ -1014,11 +1014,16 @@ impl Parser {
     fn parse_name(&mut self) -> Result<(Path, Span), ParserError> {
         //TODO: |   T_NAMESPACE T_NS_SEPARATOR namespace_name   { $$ = $3; $$->attr = ZEND_NAME_RELATIVE; }
         // try to consume the \\ if one exists so that a namespace_name will be matched
-        // then the path will be a fully quallified (FQ)
-        let fq = if_lookahead!(self, Token::NsSeparator, _token, true, false);
+        // then the path will be absolute
+        let is_absolute = if_lookahead!(self, Token::NsSeparator, _token, true, false);
         match self.parse_namespace_name() {
-            // TODO: inject FQDN as flag or something?
-            Ok(x) => Ok(x),
+            Ok((mut path, mut span)) => {
+                if is_absolute {
+                    span.start -= 1;
+                    path.is_absolute = true;
+                }
+                Ok((path, span))
+            },
             Err(x) => Err(x),
         }
     }
@@ -1045,7 +1050,7 @@ impl Parser {
 
     fn parse_class_name(&mut self) -> Result<Expr, ParserError> {
         if_lookahead!(self, Token::Static, token, {
-            return Ok(Expr(Expr_::Path(Path::Identifier(self.interner.intern("static"))), token.1))
+            return Ok(Expr(Expr_::Path(Path::identifier(false, self.interner.intern("static"))), token.1))
         });
         self.parse_name_as_expr()
     }
@@ -1073,7 +1078,7 @@ impl Parser {
     #[inline]
     fn parse_identifier_as_expr(&mut self) -> Result<Expr, ParserError> {
         let (path, span) = try!(self.parse_identifier());
-        Ok(Expr(Expr_::Path(Path::Identifier(path)), span))
+        Ok(Expr(Expr_::Path(Path::identifier(false, path)), span))
     }
 
     fn parse_constant(&mut self) -> Result<Expr, ParserError> {

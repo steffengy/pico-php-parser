@@ -5,48 +5,6 @@ use tokens::Token;
 use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
 use ast::{CatchClause, SwitchCase, Member, MemberModifiers, MemberModifier};
 
-pub struct LiteralStringEscape {
-    state: LiteralStringEscapeState
-}
-
-enum LiteralStringEscapeState {
-    Backslash(char),
-    Char(char),
-    Done,
-}
-
-impl Iterator for LiteralStringEscape {
-    type Item = char;
-
-    fn next(&mut self) -> Option<char> {
-        match self.state {
-            LiteralStringEscapeState::Backslash(c) => {
-                self.state = LiteralStringEscapeState::Char(c);
-                Some('\\')
-            }
-            LiteralStringEscapeState::Char(c) => {
-                self.state = LiteralStringEscapeState::Done;
-                Some(c)
-            }
-            LiteralStringEscapeState::Done => None,
-        }
-    }
-}
-
-trait EscapeLiteralString {
-    fn escape_literal_string(self) -> LiteralStringEscape;
-}
-
-impl EscapeLiteralString for char {
-    fn escape_literal_string(self) -> LiteralStringEscape {
-        let init_state = match self {
-            '\\' | '\'' => LiteralStringEscapeState::Backslash(self),
-            _ => LiteralStringEscapeState::Char(self)
-        };
-        LiteralStringEscape { state: init_state }
-    }
-}
-
 pub struct PrettyPrinter<W: Write> {
     indentation: usize,
     target: W,
@@ -465,6 +423,7 @@ impl<W: Write> PrettyPrinter<W> {
             Expr_::UnaryOp(_, _) => true,
             Expr_::New(_, _) => true,
             Expr_::ArrayIdx(_, _) | Expr_::ObjMember(_, _) | Expr_::StaticMember(_, _) | Expr_::Call(_, _) => true,
+            Expr_::Assign(_, _) => true,
             Expr_::TernaryIf(_, _, _) => true,
             _ => false,
         };
@@ -483,17 +442,22 @@ impl<W: Write> PrettyPrinter<W> {
         self.print_expression_curly_parens(expr, false)
     }
 
-    fn print_expression(&mut self, expr: &Expr) -> fmt::Result {
+    pub fn print_expression(&mut self, expr: &Expr) -> fmt::Result {
         match expr.0 {
             Expr_::Path(ref path) => write!(self.target, "{}", path),
             Expr_::String(ref str_) => {
-                write!(self.target, "'{}'", (str_.borrow() as &str).chars().flat_map(|x| x.escape_literal_string()).collect::<String>())
+                let out_str = (str_.borrow() as &str).replace("\\'", "\\\\'").replace('\'', "\\'");
+                try!(write!(self.target, "'{}", out_str));
+                if out_str.ends_with('\\') {
+                    try!(self.write("\\"));
+                }
+                self.write("'")
             },
             Expr_::BinaryString(ref str_) => unimplemented!(),
             Expr_::Int(ref i) => write!(self.target, "{}", i),
             Expr_::Double(ref d) => write!(self.target, "{}", d),
             Expr_::Array(ref arr) => {
-                try!(self.write("array("));
+                try!(self.write("["));
                 for (i, &(ref k, ref v)) in arr.iter().enumerate() {
                     if i > 0 {
                         try!(self.write(", "));
@@ -504,7 +468,7 @@ impl<W: Write> PrettyPrinter<W> {
                     }
                     try!(self.print_expression(v));
                 }
-                self.write(")")
+                self.write("]")
             }
             Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
             Expr_::Variable(ref varname) => write!(self.target, "${}", varname.borrow() as &str),
@@ -584,18 +548,23 @@ impl<W: Write> PrettyPrinter<W> {
                 self.write(")")
             },
             Expr_::UnaryOp(ref operator, ref operand) => {
-                try!(self.write(match *operator {
-                    UnaryOp::Positive => "+",
-                    UnaryOp::Negative => "-",
-                    UnaryOp::Not => "!",
-                    UnaryOp::PreInc => "++",
-                    UnaryOp::PreDec => "--",
-                    UnaryOp::PostInc => "",
-                    UnaryOp::PostDec => "",
-                    UnaryOp::BitwiseNot => "~",
-                    UnaryOp::SilenceErrors => "@",
-                }));
-                try!(self.print_expression(operand));
+                let (op, can_have_parens) = match *operator {
+                    UnaryOp::Positive => ("+", true),
+                    UnaryOp::Negative => ("-", true),
+                    UnaryOp::Not => ("!", true),
+                    UnaryOp::PreInc => ("++", false),
+                    UnaryOp::PreDec => ("--", false),
+                    UnaryOp::PostInc => ("", false),
+                    UnaryOp::PostDec => ("", false),
+                    UnaryOp::BitwiseNot => ("~", true),
+                    UnaryOp::SilenceErrors => ("@", true),
+                };
+                try!(self.write(op));
+                if can_have_parens {
+                    try!(self.print_expression_parens(operand));
+                } else {
+                    try!(self.print_expression(operand));
+                }
                 match *operator {
                     UnaryOp::PostInc => try!(self.write("++")),
                     UnaryOp::PostDec => try!(self.write("--")),
@@ -604,9 +573,9 @@ impl<W: Write> PrettyPrinter<W> {
                 Ok(())
             },
             Expr_::BinaryOp(ref operator, ref op1, ref op2) => {
-                try!(self.print_expression(op1));
+                try!(self.print_expression_parens(op1));
                 try!(write!(self.target, "{}", operator));
-                self.print_expression(op2)
+                self.print_expression_parens(op2)
             },
             Expr_::InstanceOf(ref op1, ref op2) => {
                 try!(self.print_expression(op1));
@@ -626,8 +595,9 @@ impl<W: Write> PrettyPrinter<W> {
                     Ty::Object(None) => "object",
                     _ => unimplemented!(),
                 }));
-                try!(self.write(")"));
-                self.print_expression(op)
+                try!(self.write(")("));
+                try!(self.print_expression(op));
+                self.write(")")
             },
             Expr_::Yield(ref expr) => {
                 try!(self.write("yield "));
@@ -664,11 +634,13 @@ impl<W: Write> PrettyPrinter<W> {
                 self.write(")")
             },
             Expr_::TernaryIf(ref base, ref case_true, ref case_else) => {
-                try!(self.print_expression(base));
+                try!(self.print_expression_parens(base));
                 try!(self.write("?"));
-                try!(self.print_opt_expression(&case_true.as_ref().map(|x| &**x)));
+                if let Some(ref expr_) = *case_true {
+                    try!(self.print_expression_parens(&**expr_));
+                }
                 try!(self.write(":"));
-                self.print_expression(case_else)
+                self.print_expression_parens(case_else)
             }
         }
     }
@@ -725,7 +697,7 @@ impl fmt::Display for MemberModifiers {
             try!(write!(f, "protected "));
         }
         if self.has(MemberModifier::Private) {
-            try!(write!(f, "privated"));
+            try!(write!(f, "private"));
         }
         if self.has(MemberModifier::Static) {
             try!(write!(f, "static"));
@@ -742,12 +714,13 @@ impl fmt::Display for MemberModifiers {
 
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Path::Identifier(ref identifier) => write!(f, "{}", identifier.borrow() as &str),
-            Path::NsIdentifier(ref ns, ref ident) => {
-                write!(f, "{}\\{}", ns.borrow() as &str, ident.borrow() as &str)
-            }
+        if self.is_absolute {
+            try!(write!(f, "\\"));
         }
+        if let Some(ref namespace) = self.namespace {
+            try!(write!(f, "{}\\", namespace.borrow() as &str));
+        }
+        write!(f, "{}", self.identifier.borrow() as &str)
     }
 }
 

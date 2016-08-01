@@ -329,8 +329,8 @@ impl<'a> Tokenizer<'a> {
         Ok(TokenSpan(tok, mk_span(self.input_pos() - 1, self.input_pos())))
     }
 
-    /// match a double number (or a long number)
-    fn _dnum_lnum(&mut self) -> Result<TokenSpan, SyntaxError> {
+    /// match a double number (or a long number/octal number)
+    fn _onum_dnum_lnum(&mut self) -> Result<TokenSpan, SyntaxError> {
         // valid inputs for double: "long.", ".long", "long.long"
         if self.input().is_empty() {
             return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
@@ -346,7 +346,11 @@ impl<'a> Tokenizer<'a> {
                 let span = mk_span(old_pos, self.input_pos());
                 // long sub-match
                 if end_pos != 0 {
-                    return Ok(TokenSpan(Token::Int(i64::from_str_radix(&str_, 10).unwrap()), span))
+                    if str_.starts_with('0') && str_.len() > 1 {
+                        return Ok(TokenSpan(Token::Int(i64::from_str_radix(&str_[1..], 8).unwrap()), span));
+                    } else {
+                        return Ok(TokenSpan(Token::Int(i64::from_str_radix(&str_, 10).unwrap()), span));
+                    }
                 }
             }
             self.state.src_pos = old_pos;
@@ -986,7 +990,7 @@ impl<'a> Tokenizer<'a> {
         ret_token!(self.match_here_now_doc());
         ret_token!(self._bnum());
         ret_token!(self._hnum());
-        ret_token!(self._dnum_lnum());
+        ret_token!(self._onum_dnum_lnum());
         ret_token!(self.match_dq_string());
         ret_token!(self.match_variable());
         ret_token!(self.match_sq_string());
@@ -1281,6 +1285,12 @@ mod tests {
     fn simple_lnum() {
         let mut tokenizer = Tokenizer::new("<?php  42");
         assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(42))]);
+    }
+
+    #[test]
+    fn simple_onum() {
+        let mut tokenizer = Tokenizer::new("<?php  0144");
+        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(100))]);
     }
 
     #[test]

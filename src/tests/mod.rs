@@ -30,9 +30,9 @@ macro_rules! rsnb {
 }
 
 macro_rules! constant {
-    (true) => {Expr_::Path(Path::Identifier("true".into()))};
-    (false) => {Expr_::Path(Path::Identifier("false".into()))};
-    (null) => {Expr_::Path(Path::Identifier("null".into()))};
+    (true) => {Expr_::Path(Path::identifier(false, "true".into()))};
+    (false) => {Expr_::Path(Path::identifier(false, "false".into()))};
+    (null) => {Expr_::Path(Path::identifier(false, "null".into()))};
 }
 
 mod expr;

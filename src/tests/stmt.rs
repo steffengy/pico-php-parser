@@ -49,10 +49,10 @@ fn parse_stmt_new() {
 
 #[test]
 fn parse_stmt_throw() {
-    assert_eq!(process_stmt(r#"throw new Exception("test");"#), st!(0,28, Stmt_::Throw(eb!(6,27, Expr_::New(eb!(10,19, Expr_::Path(Path::Identifier("Exception".into()))),
+    assert_eq!(process_stmt(r#"throw new Exception("test");"#), st!(0,28, Stmt_::Throw(eb!(6,27, Expr_::New(eb!(10,19, Expr_::Path(Path::identifier(false, "Exception".into()))),
         vec![ enb!(20,26, Expr_::String("test".into())) ])))
     ));
-    assert_eq!(process_stmt(r#"throw new Exception;"#), st!(0,20, Stmt_::Throw(eb!(6,19, Expr_::New(eb!(10,19, Expr_::Path(Path::Identifier("Exception".into()))), vec![])))));
+    assert_eq!(process_stmt(r#"throw new Exception;"#), st!(0,20, Stmt_::Throw(eb!(6,19, Expr_::New(eb!(10,19, Expr_::Path(Path::identifier(false, "Exception".into()))), vec![])))));
 }
 
 #[test]
@@ -106,10 +106,10 @@ fn parse_stmt_if_assign() {
 #[test]
 fn parse_stmt_if_while() {
     assert_eq!(process_stmt("if   ($a) { b(); }"), st!(0,18, Stmt_::If(eb!(6,8, Expr_::Variable("a".into())), Block(vec![
-        senb!(12,15, Expr_::Call(eb!(12,13, Expr_::Path(Path::Identifier("b".into()))), vec![]))
+        senb!(12,15, Expr_::Call(eb!(12,13, Expr_::Path(Path::identifier(false, "b".into()))), vec![]))
     ]), Block(vec![]))));
     assert_eq!(process_stmt("while($a) b();"), st!(0,14, Stmt_::While(eb!(6,8, Expr_::Variable("a".into())), Block(vec![
-        senb!(10,13, Expr_::Call(eb!(10,11, Expr_::Path(Path::Identifier("b".into()))), vec![]))
+        senb!(10,13, Expr_::Call(eb!(10,11, Expr_::Path(Path::identifier(false, "b".into()))), vec![]))
     ]))));
 }
 
@@ -118,31 +118,31 @@ fn parse_stmt_if_else() {
     //TODO: fix line numbers (`if { } else { }` has the length of the end_position of the 2. } insteadof the 1. }
     assert_eq!(process_stmt("if ($a) { a(); } else { b(); }"), st!(0,30, Stmt_::If(
         eb!(4,6, Expr_::Variable("a".into())),
-        Block(vec![ senb!(10,13, Expr_::Call(eb!(10,11, Expr_::Path(Path::Identifier("a".into()))), vec![])) ]),
-        Block(vec![ senb!(24,27, Expr_::Call(eb!(24,25, Expr_::Path(Path::Identifier("b".into()))), vec![])) ]),
+        Block(vec![ senb!(10,13, Expr_::Call(eb!(10,11, Expr_::Path(Path::identifier(false, "a".into()))), vec![])) ]),
+        Block(vec![ senb!(24,27, Expr_::Call(eb!(24,25, Expr_::Path(Path::identifier(false, "b".into()))), vec![])) ]),
     )));
     assert_eq!(process_stmt("if ($a) a(); else b();"), st!(0,22, Stmt_::If(
         eb!(4,6, Expr_::Variable("a".into())),
-        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::Identifier("a".into()))), vec![])) ]),
-        Block(vec![ senb!(18,21, Expr_::Call(eb!(18,19, Expr_::Path(Path::Identifier("b".into()))), vec![])) ]),
+        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::identifier(false, "a".into()))), vec![])) ]),
+        Block(vec![ senb!(18,21, Expr_::Call(eb!(18,19, Expr_::Path(Path::identifier(false, "b".into()))), vec![])) ]),
     )));
     //if, elseif, else
     assert_eq!(process_stmt("if ($a) a(); else if ($b) b(); else c();"), st!(0,40, Stmt_::If(
         eb!(4,6, Expr_::Variable("a".into())),
-        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::Identifier("a".into()))), vec![])) ]),
+        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::identifier(false, "a".into()))), vec![])) ]),
         Block(vec![ st!(18,40, Stmt_::If(
             eb!(22,24, Expr_::Variable("b".into())),
-            Block(vec![ senb!(26,29, Expr_::Call(eb!(26,27, Expr_::Path(Path::Identifier("b".into()))), vec![])) ]),
-            Block(vec![ senb!(36,39, Expr_::Call(eb!(36,37, Expr_::Path(Path::Identifier("c".into()))), vec![])) ]),
+            Block(vec![ senb!(26,29, Expr_::Call(eb!(26,27, Expr_::Path(Path::identifier(false, "b".into()))), vec![])) ]),
+            Block(vec![ senb!(36,39, Expr_::Call(eb!(36,37, Expr_::Path(Path::identifier(false, "c".into()))), vec![])) ]),
         )) ]),
     )));
     assert_eq!(process_stmt("if ($a) a(); elseif ($b)  b(); else c();"), st!(0,40, Stmt_::If(
         eb!(4,6, Expr_::Variable("a".into())),
-        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::Identifier("a".into()))), vec![])) ]),
+        Block(vec![ senb!(8,11, Expr_::Call(eb!(8,9, Expr_::Path(Path::identifier(false, "a".into()))), vec![])) ]),
         Block(vec![ st!(13,40, Stmt_::If(
             eb!(21,23, Expr_::Variable("b".into())),
-            Block(vec![ senb!(26,29, Expr_::Call(eb!(26,27, Expr_::Path(Path::Identifier("b".into()))), vec![])) ]),
-            Block(vec![ senb!(36,39, Expr_::Call(eb!(36,37, Expr_::Path(Path::Identifier("c".into()))), vec![])) ]),
+            Block(vec![ senb!(26,29, Expr_::Call(eb!(26,27, Expr_::Path(Path::identifier(false, "b".into()))), vec![])) ]),
+            Block(vec![ senb!(36,39, Expr_::Call(eb!(36,37, Expr_::Path(Path::identifier(false, "c".into()))), vec![])) ]),
         )) ]),
     )));
 }
@@ -150,8 +150,8 @@ fn parse_stmt_if_else() {
 #[test]
 fn parse_stmt_do_while() {
     assert_eq!(process_stmt("do { test(); } while(count($a));"), st!(0,32, Stmt_::DoWhile(
-        Block(vec![ senb!(5,11, Expr_::Call(eb!(5,9, Expr_::Path(Path::Identifier("test".into()))), vec![])) ]),
-        eb!(21,30, Expr_::Call(eb!(21,26, Expr_::Path(Path::Identifier("count".into()))), vec![ enb!(27,29, Expr_::Variable("a".into())) ]))
+        Block(vec![ senb!(5,11, Expr_::Call(eb!(5,9, Expr_::Path(Path::identifier(false, "test".into()))), vec![])) ]),
+        eb!(21,30, Expr_::Call(eb!(21,26, Expr_::Path(Path::identifier(false, "count".into()))), vec![ enb!(27,29, Expr_::Variable("a".into())) ]))
     )));
 }
 
@@ -171,20 +171,20 @@ fn parse_stmt_foreach() {
         eb!(9,14, Expr_::Variable("test".into())),
         None, // key
         eb!(18,20, Expr_::Variable("v".into())), // value
-        Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]) //body
+        Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ]) //body
     )));
     assert_eq!(process_stmt("foreach ($test as $k => $v) { ok(); }"), st!(0,37, Stmt_::ForEach(
         eb!(9,14, Expr_::Variable("test".into())),
         Some(eb!(18,20, Expr_::Variable("k".into()))), // key
         eb!(24,26, Expr_::Variable("v".into())), // value
-        Block(vec![ senb!(30,34, Expr_::Call(eb!(30,32, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ]) //body
+        Block(vec![ senb!(30,34, Expr_::Call(eb!(30,32, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ]) //body
     )));
 }
 
 #[test]
 fn parse_stmt_instanceof() {
     assert_eq!(process_stmt("if ($result instanceof Response) { return $result; }"), st!(0,52, Stmt_::If(
-        eb!(4,31, Expr_::InstanceOf(eb!(4,11, Expr_::Variable("result".into())), eb!(23,31,Expr_::Path(Path::Identifier("Response".into()))))),
+        eb!(4,31, Expr_::InstanceOf(eb!(4,11, Expr_::Variable("result".into())), eb!(23,31,Expr_::Path(Path::identifier(false, "Response".into()))))),
         Block(vec![ st!(35,50, Stmt_::Return(Some(eb!(42,49,Expr_::Variable("result".into()))))) ]),
         Block::empty(),
     )));
@@ -192,8 +192,8 @@ fn parse_stmt_instanceof() {
 
 #[test]
 fn parse_stmt_new_as_param() {
-    assert_eq!(process_stmt("r(new Foo);"), senb!(0,10, Expr_::Call(eb!(0,1, Expr_::Path(Path::Identifier("r".into()))), vec![
-        enb!(2,9, Expr_::New(eb!(6,9, Expr_::Path(Path::Identifier("Foo".into()))), vec![]))
+    assert_eq!(process_stmt("r(new Foo);"), senb!(0,10, Expr_::Call(eb!(0,1, Expr_::Path(Path::identifier(false, "r".into()))), vec![
+        enb!(2,9, Expr_::New(eb!(6,9, Expr_::Path(Path::identifier(false, "Foo".into()))), vec![]))
     ])));
 }
 
@@ -201,7 +201,7 @@ fn parse_stmt_new_as_param() {
 fn parse_stmt_try() {
     assert_eq!(process_stmt(r#"try { echo "ok"; } catch (Exception $e) { return false;}"#), st!(0, 56, Stmt_::Try(
         Block(vec![ st!(6,16, Stmt_::Echo(vec![ enb!(11,15, Expr_::String("ok".into())) ])) ]),
-        vec![ CatchClause { ty: Path::Identifier("Exception".into()), var: "e".into(),
+        vec![ CatchClause { ty: Path::identifier(false, "Exception".into()), var: "e".into(),
             block: Block(vec![ st!(42,55, Stmt_::Return(Some(eb!(49,54, constant!(false))))) ]),
         } ],
         None,
@@ -209,8 +209,8 @@ fn parse_stmt_try() {
     assert_eq!(process_stmt(r#"try { echo "ok"; } catch (Exception $e) { return false; } catch (Throwable $e) { return true; }"#), st!(0,95, Stmt_::Try(
         Block(vec![ st!(6,16, Stmt_::Echo(vec![ enb!(11,15, Expr_::String("ok".into())) ])) ]),
         vec![
-            CatchClause { ty: Path::Identifier("Exception".into()), var: "e".into(), block: Block(vec![ st!(42,55, Stmt_::Return(Some(eb!(49,54, constant!(false))))) ]) },
-            CatchClause { ty: Path::Identifier("Throwable".into()), var: "e".into(), block: Block(vec![ st!(81,93, Stmt_::Return(Some(eb!(88,92, constant!(true))))) ]) },
+            CatchClause { ty: Path::identifier(false, "Exception".into()), var: "e".into(), block: Block(vec![ st!(42,55, Stmt_::Return(Some(eb!(49,54, constant!(false))))) ]) },
+            CatchClause { ty: Path::identifier(false, "Throwable".into()), var: "e".into(), block: Block(vec![ st!(81,93, Stmt_::Return(Some(eb!(88,92, constant!(true))))) ]) },
         ],
         None,
     )));
@@ -218,9 +218,9 @@ fn parse_stmt_try() {
 
 #[test]
 fn parse_stmt_use() {
-    assert_eq!(process_stmt("use Test;"), st!(0,9, Stmt_::Use(vec![ UseClause::QualifiedName(Path::Identifier("Test".into()), None) ])));
+    assert_eq!(process_stmt("use Test;"), st!(0,9, Stmt_::Use(vec![ UseClause::QualifiedName(Path::identifier(false, "Test".into()), None) ])));
     assert_eq!(process_stmt(r#"use Ab\Cd\Ef\Gh\Ij as Ga;"#), st!(0, 25, Stmt_::Use(vec![UseClause::QualifiedName(
-        Path::NsIdentifier("Ab\\Cd\\Ef\\Gh".into(), "Ij".into()),
+        Path::ns_identifier(false, "Ab\\Cd\\Ef\\Gh".into(), "Ij".into()),
         Some("Ga".into()))
     ])));
 }
@@ -258,26 +258,29 @@ fn parse_stmt_switch() {
 #[test]
 fn parse_stmt_func_decl() {
     assert_eq!(process_stmt("function test() { ok(); }"), st!(0,25, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: Some(Block(vec![ senb!(18,22, Expr_::Call(eb!(18,20, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(18,22, Expr_::Call(eb!(18,20, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
     assert_eq!(process_stmt("function &test() { ok(); }"), st!(0,26, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
-        body: Some(Block(vec![ senb!(19,23, Expr_::Call(eb!(19,21, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: true, })
+        body: Some(Block(vec![ senb!(19,23, Expr_::Call(eb!(19,21, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: true, })
     )));
     assert_eq!(process_stmt("function test($a) { ok(); }"), st!(0,27, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None }],
-        body: Some(Block(vec![ senb!(20,24, Expr_::Call(eb!(20,22, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
+        body: Some(Block(vec![ senb!(20,24, Expr_::Call(eb!(20,22, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), st!(0,31, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None }, ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: None }],
-        body: Some(Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
+        params: vec![
+            ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None },
+            ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: None }
+        ],
+        body: Some(Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
 
 #[test]
 fn parse_func_decl_typehint() {
     assert_eq!(process_stmt("function test(Test $a) { ok(); }"), st!(0,32, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Some(Path::Identifier("Test".into())))), default: None } ],
-        body: Some(Block(vec![ senb!(25,29, Expr_::Call(eb!(25,27, Expr_::Path(Path::Identifier("ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
+        params: vec![ ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Some(Path::identifier(false, "Test".into())))), default: None } ],
+        body: Some(Block(vec![ senb!(25,29, Expr_::Call(eb!(25,27, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
 
@@ -290,10 +293,10 @@ fn parse_class_decl() {
         cmod: ClassModifiers::new(&[ClassModifier::Final]), name: "Test".into(), base_class: None, implements: vec![], members: vec![]
     }))));
     assert_eq!(process_stmt("class Test extends Abc\\Test2 {}"), st!(0,31, Stmt_::Decl(Decl::Class(ClassDecl {
-        cmod: ClassModifiers::none(), name: "Test".into(), base_class: Some(Path::NsIdentifier("Abc".into(), "Test2".into())), implements: vec![], members: vec![]
+        cmod: ClassModifiers::none(), name: "Test".into(), base_class: Some(Path::ns_identifier(false, "Abc".into(), "Test2".into())), implements: vec![], members: vec![]
     }))));
     assert_eq!(process_stmt("class Test implements ITest {}"), st!(0,30, Stmt_::Decl(Decl::Class(ClassDecl {
-        cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![Path::Identifier("ITest".into())], members: vec![]
+        cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![Path::identifier(false, "ITest".into())], members: vec![]
     }))));
 }
 
@@ -322,7 +325,7 @@ fn parse_class_methods() {
     assert_eq!(process_stmt("class Test { public function a() { run(); } }"), st!(0,45, Stmt_::Decl(Decl::Class(ClassDecl {
         cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![],
         members: vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]), "a".into(), FunctionDecl {
-            params: vec![], body: Some(Block(vec![ senb!(35,40, Expr_::Call(eb!(35,38, Expr_::Path(Path::Identifier("run".into()))), vec![])) ])),
+            params: vec![], body: Some(Block(vec![ senb!(35,40, Expr_::Call(eb!(35,38, Expr_::Path(Path::identifier(false, "run".into()))), vec![])) ])),
             usev: vec![], ret_ref: false,
         })]
     }))));
@@ -332,7 +335,7 @@ fn parse_class_methods() {
             members: vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]), "__construct".into(), FunctionDecl {
                 params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Some(enb!(57,59, Expr_::Array(vec![]))) }],
                 body: Some(Block(vec![ senb!(63,85, Expr_::Assign(eb!(63,75, Expr_::ObjMember(eb!(63,68, Expr_::Variable("this".into())), vec![
-                    enb!(70,75, Expr_::Path(Path::Identifier("param".into()))) ])), eb!(78,85, Expr_::Variable("param1".into()))))
+                    enb!(70,75, Expr_::Path(Path::identifier(false, "param".into()))) ])), eb!(78,85, Expr_::Variable("param1".into()))))
                 ])), usev: vec![], ret_ref: false,
             })]
         })))
@@ -342,7 +345,7 @@ fn parse_class_methods() {
 #[test]
 fn parse_class_trait_use() {
     assert_eq!(process_stmt("class Test { use Abc; }"), st!(0,23, Stmt_::Decl(Decl::Class(ClassDecl { name: "Test".into(), base_class: None, implements: vec![], members: vec![
-        Member::TraitUse(vec![Path::Identifier("Abc".into())], vec![])
+        Member::TraitUse(vec![Path::identifier(false, "Abc".into())], vec![])
     ], cmod: ClassModifiers::none() }))));
 }
 
@@ -350,7 +353,7 @@ fn parse_class_trait_use() {
 fn parse_stmt_list() {
     assert_eq!(process_stmt("list($a, $b) = test();"), senb!(0,21, Expr_::Assign(eb!(0,12, Expr_::List(
         vec![ (None, enb!(5,7, Expr_::Variable("a".into()))), (None, enb!(9,11, Expr_::Variable("b".into()))) ]
-    )), eb!(15,21, Expr_::Call(eb!(15,19, Expr_::Path(Path::Identifier("test".into()))), vec![])))));
+    )), eb!(15,21, Expr_::Call(eb!(15,19, Expr_::Path(Path::identifier(false, "test".into()))), vec![])))));
 }
 
 #[test]
@@ -358,7 +361,7 @@ fn parse_trait_decl() {
     assert_eq!(process_stmt("trait Test {}"), st!(0,13, Stmt_::Decl(Decl::Trait("Test".into(), vec![]))));
     // http://php.net/manual/de/language.oop5.traits.php
     assert_eq!(process_stmt("trait HelloWorld {use Hello, World;}"), st!(0,36, Stmt_::Decl(Decl::Trait("HelloWorld".into(), vec![
-        Member::TraitUse(vec![Path::Identifier("Hello".into()), Path::Identifier("World".into())], vec![])
+        Member::TraitUse(vec![Path::identifier(false, "Hello".into()), Path::identifier(false, "World".into())], vec![])
     ]))));
 }
 
@@ -384,10 +387,10 @@ fn parse_class_use_trait_complex() {
     }";
     assert_eq!(process_stmt(code), st!(0,163, Stmt_::Decl(Decl::Class(ClassDecl {
         cmod: ClassModifiers::none(), name: "Aliased_Talker".into(), base_class: None, implements: vec![], members: vec![
-            Member::TraitUse(vec![Path::Identifier("A".into()), Path::Identifier("B".into())], vec![
-                TraitUse::InsteadOf(Path::Identifier("B".into()), "smallTalk".into(), vec![Path::Identifier("A".into())]),
-                TraitUse::InsteadOf(Path::Identifier("A".into()), "bigTalk".into(), vec![Path::Identifier("B".into())]),
-                TraitUse::As(Some(Path::Identifier("B".into())), "bigTalk".into(), MemberModifiers::none(), Some("talk".into())),
+            Member::TraitUse(vec![Path::identifier(false, "A".into()), Path::identifier(false, "B".into())], vec![
+                TraitUse::InsteadOf(Path::identifier(false, "B".into()), "smallTalk".into(), vec![Path::identifier(false, "A".into())]),
+                TraitUse::InsteadOf(Path::identifier(false, "A".into()), "bigTalk".into(), vec![Path::identifier(false, "B".into())]),
+                TraitUse::As(Some(Path::identifier(false, "B".into())), "bigTalk".into(), MemberModifiers::none(), Some("talk".into())),
             ])
         ]
     }))));
@@ -407,5 +410,5 @@ fn parse_stmt_closure_use() {
 
 #[test]
 fn parse_namespace_decl() {
-    assert_eq!(process_stmt("namespace Foo\\Bar;"), st!(0,17, Stmt_::Decl(Decl::Namespace(Path::NsIdentifier("Foo".into(), "Bar".into())))));
+    assert_eq!(process_stmt("namespace Foo\\Bar;"), st!(0,17, Stmt_::Decl(Decl::Namespace(Path::ns_identifier(false, "Foo".into(), "Bar".into())))));
 }
