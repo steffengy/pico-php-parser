@@ -37,8 +37,7 @@ impl SyntaxError {
     pub fn span(&self) -> Span {
         match *self {
             SyntaxError::None => unimplemented!(),
-            SyntaxError::Unterminated(_, ref span) => span.clone(),
-            SyntaxError::UnknownCharacter(ref span) => span.clone(),
+            SyntaxError::Unterminated(_, ref span) | SyntaxError::UnknownCharacter(ref span) => span.clone(),
         }
     }
 }
@@ -218,14 +217,15 @@ impl Token {
     #[inline]
     pub fn is_reserved_non_modifier(&self) -> bool {
         match *self {
-            Token::Include | Token::IncludeOnce | Token::Eval | Token::Require | Token::RequireOnce | Token::LogicalOr | Token::LogicalXor | Token::LogicalAnd => true,
-            Token::InstanceOf | Token::New | Token::Clone | Token::Exit | Token::If | Token::ElseIf | Token::Else | Token::EndIf | Token::Echo => true,
-            Token::Do | Token::While | Token::EndWhile => true,
-            Token::For | /*Token::EndFor |*/ Token::Foreach | Token::EndForeach | Token::Declare | Token::EndDeclare | Token::As | Token::Try | Token::Catch | Token::Finally => true,
-            Token::Throw | Token::Use | Token::Insteadof | Token::Global | Token::Var | Token::Unset | Token::Isset | Token::Empty | Token::Continue | Token::Goto => true,
-            Token::Function | Token::Const | Token::Return | Token::Print | Token::Yield | Token::List | Token::Switch | Token::EndSwitch | Token::Case | Token::Default => true,
-            Token::Break | Token::Array | Token::Callable | Token::Extends | Token::Implements | Token::Namespace | Token::Trait | Token::Interface | Token::Class => true,
-            Token::MagicClass | Token::MagicTrait | Token::MagicFunction | Token::MagicMethod | Token::MagicLine | Token::MagicFile | Token::MagicDir | Token::MagicNamespace => true,
+            Token::Include | Token::IncludeOnce | Token::Eval | Token::Require | Token::RequireOnce | Token::LogicalOr | Token::LogicalXor | Token::LogicalAnd
+            | Token::InstanceOf | Token::New | Token::Clone | Token::Exit | Token::If | Token::ElseIf | Token::Else | Token::EndIf | Token::Echo
+            | Token::Do | Token::While | Token::EndWhile
+            | Token::For | /*Token::EndFor |*/ Token::Foreach | Token::EndForeach | Token::Declare | Token::EndDeclare | Token::As | Token::Try | Token::Catch | Token::Finally
+            | Token::Throw | Token::Use | Token::Insteadof | Token::Global | Token::Var | Token::Unset | Token::Isset | Token::Empty | Token::Continue | Token::Goto
+            | Token::Function | Token::Const | Token::Return | Token::Print | Token::Yield | Token::List | Token::Switch | Token::EndSwitch | Token::Case | Token::Default
+            | Token::Break | Token::Array | Token::Callable | Token::Extends | Token::Implements | Token::Namespace | Token::Trait | Token::Interface | Token::Class
+            | Token::MagicClass | Token::MagicTrait | Token::MagicFunction | Token::MagicMethod | Token::MagicLine | Token::MagicFile | Token::MagicDir
+            | Token::MagicNamespace => true,
             _ => false,
         }
     }

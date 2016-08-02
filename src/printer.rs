@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use std::borrow::Borrow;
 use tokens::Token;
 use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
-use ast::{CatchClause, SwitchCase, Member, MemberModifiers, MemberModifier};
+use ast::{Member, MemberModifiers, MemberModifier};
 
 pub struct PrettyPrinter<W: Write> {
     indentation: usize,
@@ -32,7 +32,7 @@ impl<W: Write> PrettyPrinter<W> {
     }
 
     fn write_indented(&mut self, text: &str) -> fmt::Result {
-        for i in 0..self.indentation {
+        for _ in 0..self.indentation {
             try!(write!(self.target, "    "));
         }
         write!(self.target, "{}", text)
@@ -117,6 +117,9 @@ impl<W: Write> PrettyPrinter<W> {
             Decl::StaticVars(ref vars) => {
                 try!(self.write_indented("static "));
                 for (i, &(ref varname, ref value)) in vars.iter().enumerate() {
+                    if i > 0 {
+                        try!(self.write(", "));
+                    }
                     try!(self.write("$"));
                     try!(self.write(varname.borrow()));
                     if let Some(ref value) = *value {
@@ -160,7 +163,7 @@ impl<W: Write> PrettyPrinter<W> {
                     }
                     try!(write!(self.target, "{}", name));
                 }
-                if uses.len() > 0 {
+                if !uses.is_empty() {
                     try!(self.write("{\n"));
                     self.indentation += 1;
                     for use_ in uses {
@@ -419,12 +422,10 @@ impl<W: Write> PrettyPrinter<W> {
         let (parens_open, parens_close) = if curly { ("{", "}") } else { ("(", ")") };
 
         let wrap_in_parens = match expr.0 {
-            Expr_::BinaryOp(_, _, _) => true,
-            Expr_::UnaryOp(_, _) => true,
-            Expr_::New(_, _) => true,
-            Expr_::ArrayIdx(_, _) | Expr_::ObjMember(_, _) | Expr_::StaticMember(_, _) | Expr_::Call(_, _) => true,
-            Expr_::Assign(_, _) => true,
-            Expr_::TernaryIf(_, _, _) => true,
+            Expr_::BinaryOp(_, _, _) | Expr_::UnaryOp(_, _)
+            | Expr_::ArrayIdx(_, _) | Expr_::ObjMember(_, _) | Expr_::StaticMember(_, _) | Expr_::Call(_, _)
+            | Expr_::New(_, _) | Expr_::Assign(_, _)
+            | Expr_::TernaryIf(_, _, _) => true,
             _ => false,
         };
 
@@ -554,8 +555,7 @@ impl<W: Write> PrettyPrinter<W> {
                     UnaryOp::Not => ("!", true),
                     UnaryOp::PreInc => ("++", false),
                     UnaryOp::PreDec => ("--", false),
-                    UnaryOp::PostInc => ("", false),
-                    UnaryOp::PostDec => ("", false),
+                    UnaryOp::PostInc | UnaryOp::PostDec => ("", false),
                     UnaryOp::BitwiseNot => ("~", true),
                     UnaryOp::SilenceErrors => ("@", true),
                 };

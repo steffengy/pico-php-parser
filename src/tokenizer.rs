@@ -1,8 +1,7 @@
-//! tokenizer based on https://github.com/php/php-src/blob/ebb99a1a3a2ec9216d95c63b267ae0f66074f4de/Zend/zend_language_scanner.l
+//! tokenizer based on [Zend LS](https://github.com/php/php-src/blob/ebb99a1a3a2ec9216d95c63b267ae0f66074f4de/Zend/zend_language_scanner.l)
 //! since the reference doesn't seem very correct in some cases
 use std::str::{self, FromStr};
 use std::rc::Rc;
-use std::ops::Deref;
 use std::mem;
 
 use interner::Interner;
@@ -356,7 +355,7 @@ impl<'a> Tokenizer<'a> {
             Some(end_pos) => end_pos,
         };
         let old_pos = self.input_pos();
-        let mut str_ = self.advance(end_pos).to_owned();
+        let str_ = self.advance(end_pos).to_owned();
         if !self.input().starts_with('.') {
             {
                 let span = mk_span(old_pos, self.input_pos());
@@ -502,7 +501,7 @@ impl<'a> Tokenizer<'a> {
             };
             self.queue.push(TokenSpan(ret_token, mk_span(start_pos as usize, end_pos as usize)));
         }
-        if parts.len() > 0 {
+        if !parts.is_empty() {
             self.queue.extend(parts.into_iter().rev());
         }
         state_helper!(push, self, EmitQueue);
@@ -562,7 +561,7 @@ impl<'a> Tokenizer<'a> {
     fn str_variable(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
         self.advance(1);
         // T_DOLLAR_OPEN_CURLY_BRACES ${ ... } syntax (simple = DollarCurlyBraces, complex = str_block)
-        if self.input().starts_with("{") {
+        if self.input().starts_with('{') {
             let pos = self.input_pos() - 1;
             if !bytes.is_empty() {
                 let len = bytes.len();
@@ -585,7 +584,6 @@ impl<'a> Tokenizer<'a> {
             let mut tmp_parts = vec![];
             // match var_offset
             if self.input().starts_with('[') {
-                let bak_state = self.state.clone();
                 unimplemented!();
             }
             // match object access (only $var->label supported in PHP)
@@ -856,7 +854,6 @@ impl<'a> Tokenizer<'a> {
                 }
             }
         }
-        let span = mk_span(bak_state_str.src_pos, self.input_pos() - 1);
         if is_now_doc {
             assert!(parts.is_empty());
             let ret_token = match String::from_utf8(bytes) {
@@ -912,7 +909,7 @@ impl<'a> Tokenizer<'a> {
                 return Err(SyntaxError::None);
             }
         }.to_owned();
-        for i in 0..comment.lines().count().checked_sub(1).unwrap_or(0) {
+        for _ in 0..comment.lines().count().checked_sub(1).unwrap_or(0) {
             self.state.next_line()
         }
         let mut span = mk_span(old_pos, self.input_pos());
@@ -921,18 +918,17 @@ impl<'a> Tokenizer<'a> {
             // for this specific case `.doc_comment` merely acts as a flag
             span.doc_comment = Some("".to_owned());
         }
-        return Ok(TokenSpan(Token::Comment(self.interner.intern(&comment)), span));
+        Ok(TokenSpan(Token::Comment(self.interner.intern(&comment)), span))
     }
 
     /// Try to parse a token depending on the current state
     pub fn next_token(&mut self) -> Result<TokenSpan, SyntaxError> {
         loop {
             let ret = match self.state.state {
-                State::Done => Err(SyntaxError::None),
+                State::Done | State::DoNothing => Err(SyntaxError::None),
                 State::Initial => self.initial_token(),
                 State::InScripting => self.in_scripting_token(),
                 State::LookingForProperty => self.looking_for_property_token(),
-                State::DoNothing => Err(SyntaxError::None),
                 /// this state allows returning multiple tokens (for e.g. string fragments)
                 State::EmitQueue => {
                     match self.queue.pop() {
@@ -1013,11 +1009,9 @@ impl<'a> Tokenizer<'a> {
         ret_token!(self.match_comments());
         ret_token!(self.match_backquote());
         self.state.src_pos = old_pos;
-        match self._label() {
-            Some((label, span)) => {
-                ret.push(Ok(TokenSpan(Token::String(self.interner.intern(label)), span)));
-            },
-            _ => ()
+
+        if let Some((label, span)) = self._label() {
+            ret.push(Ok(TokenSpan(Token::String(self.interner.intern(label)), span)));
         }
         self.state.src_pos = old_pos;
         ret.push(self.in_scripting_other_token());
@@ -1116,7 +1110,7 @@ impl<'a> Tokenizer<'a> {
         ret_token!(match_token!(self,   Var));
 
         // match cast tokens, all in one-try
-        if self.input().starts_with("(") {
+        if self.input().starts_with('(') {
             #[inline]
             fn try_determine_cast_type(self_: &mut Tokenizer) -> Result<TokenSpan, SyntaxError> {
                 ret_token!(match_token!(self_,  CastInt));
@@ -1138,7 +1132,7 @@ impl<'a> Tokenizer<'a> {
             self.whitespace_only();
             if let Ok(ret) = try_determine_cast_type(self) {
                 self.whitespace_only();
-                if self.input().starts_with(")") {
+                if self.input().starts_with(')') {
                     self.advance(1);
                     return Ok(TokenSpan(ret.0, mk_span(old_pos, self.input_pos())));
                 }

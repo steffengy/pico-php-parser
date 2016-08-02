@@ -1,10 +1,12 @@
 ///! a very simple string interner
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::convert::From;
 use std::rc::Rc;
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
+
+#[cfg(test)]
+use std::convert::From;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RcStr(Rc<String>);
@@ -39,7 +41,7 @@ impl Interner {
     /// clone it if necessary
     /// returns the ref counted reference to the string
     pub fn intern(&mut self, s: &str) -> RcStr {
-        if let Some(str_) = self.strs.get(s).map(|x| x.clone()) {
+        if let Some(str_) = self.strs.get(s).cloned() {
             return str_;
         }
         let str_ = RcStr(Rc::new(s.to_owned()));

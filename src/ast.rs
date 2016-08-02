@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::rc::Rc;
 use tokenizer::Span;
 use interner::RcStr;
@@ -116,7 +115,7 @@ impl ClassModifiers {
 
     #[inline]
     pub fn has(&self, m: ClassModifier) -> bool {
-        return self.0 & (m as u8) != 0;
+        self.0 & (m as u8) != 0
     }
 }
 
@@ -148,7 +147,7 @@ impl MemberModifiers {
     }
 
     pub fn has(&self, m: MemberModifier) -> bool {
-        return self.0 & (m as u8) != 0
+        self.0 & (m as u8) != 0
     }
 }
 
@@ -167,7 +166,7 @@ impl Block {
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.0.is_empty()
+        self.0.is_empty()
     }
 }
 
@@ -263,7 +262,7 @@ pub enum Ty {
 
 /// a builtin (internal) constant, which can be resolved at parse-time
 /// and is an essential part of the language (by design and not by declaration)
-/// TODO: use Null, True, False insteadof Path::Identifier("null" ... etc.
+// TODO: use Null, True, False insteadof Path::Identifier("null" ... etc.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Const {
     Null,
