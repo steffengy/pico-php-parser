@@ -15,13 +15,16 @@ To ensure that the most common constructs of the PHP-language work, we have **2 
 
     > These kind of tests ensure that the information in the AST is correct  
     > and also check the correctness of **meta-information** such as **line numbers**.  
-    > There are quite a few, but they are not as easy to write.  
-    > A simple `cargo test`, as typical for the **rust ecosystem**, should suffice.  
+    > There are quite a few of these tests, but they are not as easy to write.  
+    
+    > These types of tests are run during a simple `cargo test`  
+    which is the typical test-command for the **rust ecosystem**.  
 2. **Project tests**:  
 
-    > The goal is to test against the **most common [PHP-projects](#current-test-targets)**  
-    > to ensure they can be **parsed & pretty printed**. To verify this works, we run the **tests before  
-    > and after**, to basically ensure the parser aswell as the "pretty" printer work.  
+    > This stage ensures **most common [PHP-projects](#current-test-targets)** parse successfully:  
+    > 1. We ensure the tests pass at a clean state of the project.    
+    > 2. The parser & pretty printer parse the files & rewrite them   
+    > 3. The tests are run a second time to ensure they still work properly.   
 
 # Current Test Targets
 - [Laravel (Framework)](https://github.com/laravel/framework)
