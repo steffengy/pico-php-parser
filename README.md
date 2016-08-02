@@ -1,6 +1,6 @@
 # PicoPHPParser [![Build Status](https://travis-ci.org/steffengy/pico-php-parser.svg?branch=master)](https://travis-ci.org/steffengy/pico-php-parser)
 
-PicoPHPParser is a *lightweight* PHP 7.1 parser, which was (hand-)written in rust.  
+PicoPHPParser is a *lightweight* PHP 7.1 parser, which is (hand-)written in rust.  
 It already supports the *most common constructs* of the PHP-language.  
 
 A possible usage for example might be to provide *better error messages* than the original PHP-parser.  
@@ -26,5 +26,5 @@ To ensure that the most common constructs of the PHP-language work, we have **2 
     > 2. The parser & pretty printer parse the files & rewrite them   
     > 3. The tests are run a second time to ensure they still work properly.   
 
-# Current Test Targets
+## Current Test Targets
 - [Laravel (Framework)](https://github.com/laravel/framework)

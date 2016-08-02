@@ -264,7 +264,7 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 let expr = try!(self.parse_expression(Precedence::Unary));
-                let span = mk_span(left.1.start as usize, expr.1.end as usize);
+                let span = mk_span(left.1.start, expr.1.end);
                 Expr(Expr_::UnaryOp(op, Box::new(expr)), span)
             },
             _ => {
@@ -335,7 +335,7 @@ impl Parser {
             if_lookahead_expect!(self, Token::Colon, Token::Colon);
             let expr_ternary_else = try!(self.parse_expression(new_precedence));
             let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-            let span = mk_span(tmp.1.start as usize, expr_ternary_else.1.end as usize);
+            let span = mk_span(tmp.1.start, expr_ternary_else.1.end);
             *left = Expr(Expr_::TernaryIf(tmp, expr_ternary_if.map(|x| Box::new(x)), Box::new(expr_ternary_else)), span);
             return Ok(true);
         }
@@ -348,7 +348,7 @@ impl Parser {
             }
             let right = try!(self.parse_class_name_reference());
             let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-            let span = mk_span(tmp.1.start as usize, right.1.end as usize);
+            let span = mk_span(tmp.1.start, right.1.end);
             *left = Expr(Expr_::InstanceOf(tmp, Box::new(right)), span);
             return Ok(true);
         }
@@ -363,7 +363,7 @@ impl Parser {
         let right = try!(self.parse_expression(new_precedence));
         // TODO: using Break(0) is a hack here (and above), get rid of the mem::replace somehow
         let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-        let span = mk_span(tmp.1.start as usize, right.1.end as usize);
+        let span = mk_span(tmp.1.start, right.1.end);
         *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), span);
         Ok(true)
     }
@@ -448,7 +448,7 @@ impl Parser {
                 if_lookahead!(p, Token::ParenthesesOpen, token, {
                     let expr = try!(p.parse_expression(Precedence::None)).0;
                     let end_pos = if_lookahead_expect!(p, Token::ParenthesesClose, Token::ParenthesesClose, token, token.1.end);
-                    let span = mk_span(token.1.start as usize, end_pos as usize);
+                    let span = mk_span(token.1.start, end_pos);
                     return Ok((Expr(expr, span), false));
                 });
             }
@@ -470,13 +470,13 @@ impl Parser {
                     let start_pos = { let Expr(_, ref span) = cls_name; span.start };
                     if let Ok(var_name) = p.parse_simple_variable() {
                         let end_pos = { let Expr(_, ref span) = var_name; span.end };
-                        return Ok((cls_name, var_name, mk_span(start_pos as usize, end_pos as usize)));
+                        return Ok((cls_name, var_name, mk_span(start_pos, end_pos)));
                     }
                     if !simple_only {
                         let identifier = try!(p.parse_identifier_as_expr());
                         if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = p.next_token() {
                             let end_pos = { let Expr(_, ref span) = identifier; span.end };
-                            return Ok((cls_name, identifier, mk_span(start_pos as usize, end_pos as usize)));
+                            return Ok((cls_name, identifier, mk_span(start_pos, end_pos)));
                         }
                     }
                 });
@@ -529,7 +529,7 @@ impl Parser {
                         span.end = self.tokens[self.pos-1].1.end;
                         idxs.push(expr);
                     } else {
-                        let span = mk_span(var_expr.1.start as usize, self.tokens[self.pos-1].1.end as usize);
+                        let span = mk_span(var_expr.1.start, self.tokens[self.pos-1].1.end);
                         var_expr = Expr(Expr_::ArrayIdx(Box::new(var_expr), vec![expr]), span);
                     }
                     continue;
@@ -545,7 +545,7 @@ impl Parser {
                     continue;
                 },
                 (Ok(p), Expr(expr, old_span)) => {
-                    let span = mk_span(old_span.start as usize, self.tokens[self.pos-1].1.end as usize);
+                    let span = mk_span(old_span.start, self.tokens[self.pos-1].1.end);
                     var_expr = Expr(Expr_::ObjMember(Box::new(Expr(expr, old_span)), vec![p]), span);
                     continue;
                 }
@@ -560,7 +560,7 @@ impl Parser {
                     continue;
                 },
                 (Ok(p), Expr(expr, old_span)) => {
-                    let span = mk_span(old_span.start as usize, self.tokens[self.pos-1].1.end as usize);
+                    let span = mk_span(old_span.start, self.tokens[self.pos-1].1.end);
                     var_expr = Expr(Expr_::StaticMember(Box::new(Expr(expr, old_span)), vec![p]), span);
                     continue;
                 }
@@ -569,7 +569,7 @@ impl Parser {
             if !simple_only {
                 if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = self.next_token() {
                     let args = try!(self.parse_argument_list());
-                    let span = mk_span(var_expr.1.start as usize, self.tokens[self.pos-1].1.end as usize);
+                    let span = mk_span(var_expr.1.start, self.tokens[self.pos-1].1.end);
                     var_expr = Expr(Expr_::Call(Box::new(var_expr), args), span);
                     continue;
                 }
@@ -604,10 +604,10 @@ impl Parser {
         let expr = try!(self.parse_other_expression());
         let start_pos = expr.1.start;
         if_lookahead!(self, Token::Increment, token, {
-            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostInc, Box::new(expr)), mk_span(start_pos as usize, token.1.end as usize)));
+            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostInc, Box::new(expr)), mk_span(start_pos, token.1.end)));
         });
         if_lookahead!(self, Token::Decrement, token, {
-            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostDec, Box::new(expr)),  mk_span(start_pos as usize, token.1.end as usize)));
+            return Ok(Expr(Expr_::UnaryOp(UnaryOp::PostDec, Box::new(expr)),  mk_span(start_pos, token.1.end)));
         });
         Ok(expr)
     }
@@ -713,7 +713,7 @@ impl Parser {
             usev: use_variables,
             ret_ref: returns_ref,
         };
-        let span = mk_span(span.start as usize, self.tokens[self.pos-1].1.end as usize);
+        let span = mk_span(span.start, self.tokens[self.pos-1].1.end);
         return Ok(Stmt(match name {
             None => Stmt_::Expr(Expr(Expr_::Function(decl), span.clone())),
             Some(name) => Stmt_::Decl(Decl::GlobalFunction(name, decl)),
@@ -770,7 +770,7 @@ impl Parser {
         let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, token, token.1.end, if let Some(err) = err {
             return Err(err);
         });
-        let span = mk_span(start_pos as usize, end_pos as usize);
+        let span = mk_span(start_pos, end_pos);
         let ret_expr = match oo_type {
             OoType::Class => Stmt_::Decl(Decl::Class(ClassDecl {
                 cmod: ClassModifiers::new(&class_modifiers),
@@ -820,7 +820,7 @@ impl Parser {
         });
         if_lookahead!(self, Token::Yield, token, {
             let expr = try!(self.parse_opt_expression(Precedence::None)).map(|x| Box::new(x));
-            return Ok(Expr(Expr_::Yield(expr), mk_span(token.1.start as usize, self.tokens[self.pos-1].1.end as usize)));
+            return Ok(Expr(Expr_::Yield(expr), mk_span(token.1.start, self.tokens[self.pos-1].1.end)));
         });
         // function declaration (anonymous function)
         if_lookahead!(self, Token::Function, token, if let Stmt_::Expr(e) = try!(self.parse_function_declaration(token.1, true, false)).0 {
@@ -890,7 +890,7 @@ impl Parser {
                 _ => unreachable!(),
             };
             let expr = try!(self.parse_expression(Precedence::None));
-            return Ok(Expr(Expr_::Include(ity, Box::new(expr)), mk_span(span.start as usize, self.tokens[self.pos-1].1.end as usize)))
+            return Ok(Expr(Expr_::Include(ity, Box::new(expr)), mk_span(span.start, self.tokens[self.pos-1].1.end)))
         }
         // variable handling
         let assign_target = match self.parse_variable(false, None) {
@@ -910,7 +910,7 @@ impl Parser {
                     Some(&TokenSpan(Token::Equal, _)) => (),
                     _ => return Err(ParserError::new(vec![Token::Equal], self.pos)),
                 }
-                let span = mk_span(token.1.start as usize, end_pos as usize);
+                let span = mk_span(token.1.start, end_pos);
                 Some(Expr(Expr_::List(pairs), span))
             }, None),
         };
@@ -949,7 +949,7 @@ impl Parser {
 
                 return match self.parse_expression(Precedence::None) {
                     Ok(expr) => {
-                        let span = mk_span(var.1.start as usize, self.tokens[self.pos-1].1.end as usize);
+                        let span = mk_span(var.1.start, self.tokens[self.pos-1].1.end);
                         let expr = match (assign_type, by_ref) {
                             (Op::Eq, false) => Expr_::Assign(Box::new(var), Box::new(expr)),
                             (Op::Eq, true) => Expr_::AssignRef(Box::new(var), Box::new(expr)),
@@ -967,7 +967,7 @@ impl Parser {
         if_lookahead!(self, Token::ParenthesesOpen, token, {
             let expr_ret =  try!(self.parse_expression(Precedence::None));
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, token2, {
-                return Ok(Expr(expr_ret.0, mk_span(token.1.start as usize, token2.1.end as usize)));
+                return Ok(Expr(expr_ret.0, mk_span(token.1.start, token2.1.end)));
             });
         });
 
@@ -1090,7 +1090,7 @@ impl Parser {
             match self.parse_identifier_as_expr() {
                 Err(x) => return Err(x),
                 Ok(ident) => {
-                    let span = mk_span(name.1.start as usize, ident.1.end as usize);
+                    let span = mk_span(name.1.start, ident.1.end);
                     return Ok(Expr(Expr_::StaticMember(Box::new(name), vec![ident]), span))
                 }
             }
@@ -1122,7 +1122,7 @@ impl Parser {
             });
             if_lookahead!(self, Token::DollarCurlyBracesOpen, token, {
                 if !str_.is_empty() {
-                    parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap() as usize, end_pos as usize)));
+                    parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap(), end_pos)));
                 }
                 str_.clear();
                 match self.parse_identifier() {
@@ -1135,14 +1135,14 @@ impl Parser {
                     Err(_) => {
                         let expr = try!(self.parse_expression(Precedence::None));
                         let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, end_token, end_token.1.end);
-                        parts.push(Expr(Expr_::FetchVariable(Box::new(expr)), mk_span(token.1.start as usize, end_pos as usize)));
+                        parts.push(Expr(Expr_::FetchVariable(Box::new(expr)), mk_span(token.1.start, end_pos)));
                     }
                 }
                 continue;
             });
             if_lookahead!(self, Token::CurlyBracesOpen, _tok, {
                 if !str_.is_empty() {
-                    parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap() as usize, end_pos as usize)));
+                    parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap(), end_pos)));
                 }
                 str_.clear();
                 let expr = try!(self.parse_expression(Precedence::None));
@@ -1154,7 +1154,7 @@ impl Parser {
             match self.parse_variable(false, None) {
                 Ok(expr) => {
                     if !str_.is_empty() {
-                        parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap() as usize, end_pos as usize)));
+                        parts.push(Expr(Expr_::String(self.interner.intern(&str_)), mk_span(start_pos.unwrap(), end_pos)));
                     }
                     str_.clear();
                     start_pos = Some(expr.1.end);
@@ -1178,7 +1178,7 @@ impl Parser {
             };
             // concat all parts
             return Ok(parts.into_iter().rev().fold(initial_expr, |acc, part| {
-                let span = mk_span(part.1.start as usize, acc.1.end as usize);
+                let span = mk_span(part.1.start, acc.1.end);
                 Expr(Expr_::BinaryOp(Op::Concat, Box::new(part), Box::new(acc)), span)
             }));
         }
@@ -1276,7 +1276,7 @@ impl Parser {
         let is_var = self.parse_is_ref();
         let expr = try!(self.parse_variable(false, None));
         if is_var {
-            let span = mk_span(expr.1.start as usize - 1, expr.1.start as usize);
+            let span = mk_span(expr.1.start - 1, expr.1.start);
             return Ok(Expr(Expr_::Reference(Box::new(expr)), span));
         }
         Ok(expr)
@@ -1299,7 +1299,7 @@ impl Parser {
             let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, tok, tok.1.end, if let Some(err) = stmts_err {
                 return Err(err)
             });
-            let span = mk_span(token.1.start as usize, end_pos as usize);
+            let span = mk_span(token.1.start, end_pos);
             return Ok(Stmt(Stmt_::Block(Block(block)), span));
         });
         // parse a try statement
@@ -1338,7 +1338,7 @@ impl Parser {
                 });
                 Some(Block(fbody))
             }, None);
-            let span = mk_span(token.1.start as usize, self.tokens[self.pos-1].1.end as usize);
+            let span = mk_span(token.1.start, self.tokens[self.pos-1].1.end);
             return Ok(Stmt(Stmt_::Try(Block(body), catch_clauses, finally_clause), span));
         });
         // parse a unset statement
@@ -1351,7 +1351,7 @@ impl Parser {
             }
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.end);
-            return Ok(Stmt(Stmt_::Unset(vars), mk_span(token.1.start as usize, end_pos as usize)));
+            return Ok(Stmt(Stmt_::Unset(vars), mk_span(token.1.start, end_pos)));
         });
         // parse a foreach statement
         if_lookahead!(self, Token::Foreach, token, {
@@ -1365,7 +1365,7 @@ impl Parser {
             );
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             let (body, bl_span) = try!(self.parse_statement_extract_block());
-            let span = mk_span(token.1.start as usize, bl_span.end as usize);
+            let span = mk_span(token.1.start, bl_span.end);
             return Ok(Stmt(Stmt_::ForEach(Box::new(expr), key, value, body), span));
         });
         // parse a for statement
@@ -1380,7 +1380,7 @@ impl Parser {
             } { if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon) }
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             let (block, bl_span) = try!(self.parse_statement_extract_block());
-            let span = mk_span(token.1.start as usize, bl_span.end as usize);
+            let span = mk_span(token.1.start, bl_span.end);
             let (initial, cond, looper) = (mem::replace(&mut stmts[0], None) , mem::replace(&mut stmts[1], None), mem::replace(&mut stmts[2], None));
             return Ok(Stmt(Stmt_::For(initial, cond, looper, block), span));
         });
@@ -1415,7 +1415,7 @@ impl Parser {
                 cases.push(SwitchCase { default: false, conds: vec![cond], block: Block(vec![]) })
             }
             let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, token, token.1.end);
-            let span = mk_span(token.1.start as usize, end_pos as usize);
+            let span = mk_span(token.1.start, end_pos);
             return Ok(Stmt(Stmt_::Switch(Box::new(expr), cases), span));
         });
         // parse an if/while-statement/do-while
@@ -1454,12 +1454,12 @@ impl Parser {
 
                     if let Token::Do = token.0 {
                         let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.end);
-                        let span = mk_span(start_pos as usize, end_pos as usize);
+                        let span = mk_span(start_pos, end_pos);
                         return Ok(Stmt(Stmt_::DoWhile(do_while_body.unwrap(), Box::new(cond_expr.unwrap())), span));
                     }
 
                     let (if_body, if_span) = try!(self.parse_statement_extract_block());
-                    let span = mk_span(start_pos as usize, if_span.end as usize);
+                    let span = mk_span(start_pos, if_span.end);
 
                     if let Token::While = token.0 {
                         return Ok(Stmt(Stmt_::While(Box::new(cond_expr.unwrap()), if_body), span))
@@ -1502,7 +1502,7 @@ impl Parser {
                 if_lookahead!(p, Token::Comma, _tok, continue, break);
             }
             if_lookahead_expect!(p, Token::SemiColon, Token::SemiColon);
-            let span = mk_span(span.start as usize, p.tokens[p.pos-2].1.end as usize);
+            let span = mk_span(span.start, p.tokens[p.pos-2].1.end);
             return Ok(Stmt(Stmt_::Decl(Decl::StaticVars(vars)), span))
         }
         if_lookahead_restore!(self, Token::Static, token, {
@@ -1533,7 +1533,7 @@ impl Parser {
                 if let Some(ret) = ret {
                     // check if the statement is properly terminated
                     if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
-                    let span = mk_span(span.start as usize, self.tokens[self.pos-1].1.end as usize);
+                    let span = mk_span(span.start, self.tokens[self.pos-1].1.end);
                     return Ok(Stmt(ret, span));
                 }
                 Err(ParserError::new(vec![], self.pos))
@@ -1546,7 +1546,7 @@ impl Parser {
             Err(x) => Err(x),
             Ok(Expr(expr, span)) => {
                 let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.end);
-                let stmt_span = mk_span(span.start as usize, end_pos as usize);
+                let stmt_span = mk_span(span.start, end_pos);
                 return Ok(Stmt(Stmt_::Expr(Expr(expr, span)), stmt_span));
             }
         });
@@ -1707,7 +1707,7 @@ impl Parser {
         if_lookahead!(self, Token::Namespace, token, {
             let name = try!(self.parse_namespace_name());
             let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.start);
-            let span = mk_span(token.1.start as usize, end_pos as usize);
+            let span = mk_span(token.1.start, end_pos);
             return Ok(Stmt(Stmt_::Decl(Decl::Namespace(name.0)), span));
         });
         if_lookahead!(self, Token::Use, token, {
@@ -1726,7 +1726,7 @@ impl Parser {
                 if_lookahead!(self, Token::Comma, _tok, continue, break);
             }
             let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.end);
-            let span = mk_span(token.1.start as usize, end_pos as usize);
+            let span = mk_span(token.1.start, end_pos);
             return Ok(Stmt(Stmt_::Use(clauses), span));
         });
         // TODO: incomplete

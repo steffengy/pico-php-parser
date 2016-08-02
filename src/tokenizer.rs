@@ -8,9 +8,25 @@ use std::mem;
 use interner::Interner;
 pub use tokens::{Span, Token, TokenSpan, SyntaxError};
 
+pub trait AsSpanPos {
+    fn as_span_pos(&self) -> u32;
+}
+
+impl AsSpanPos for u32 {
+    fn as_span_pos(&self) -> u32 {
+        *self
+    }
+}
+
+impl AsSpanPos for usize {
+    fn as_span_pos(&self) -> u32 {
+        *self as u32
+    }
+}
+
 #[inline]
-pub fn mk_span(start: usize, end: usize) -> Span {
-    Span { start: start as u32, end: end as u32, ..Span::new() }
+pub fn mk_span<A: AsSpanPos, B: AsSpanPos>(start: A, end: B) -> Span {
+    Span { start: start.as_span_pos(), end: end.as_span_pos(), ..Span::new() }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -554,7 +570,7 @@ impl<'a> Tokenizer<'a> {
                     Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
                     Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
                 };
-                parts.push(TokenSpan(old_fragment, mk_span(pos as usize - len, pos as usize)));
+                parts.push(TokenSpan(old_fragment, mk_span(pos - len, pos)));
             }
             let next_part = parts.len();
             self.str_block(bytes, parts, false);
@@ -578,7 +594,7 @@ impl<'a> Tokenizer<'a> {
                 self.advance(2);
                 if let Some((property, span)) = self._label().map(|(x, span)| (self.interner.intern(x), span)) {
                     tmp_parts.push(TokenSpan(Token::ObjectOp, mk_span(bak_pos, bak_pos+1)));
-                    tmp_parts.push(TokenSpan(Token::String(property), mk_span(span.start as usize, span.end as usize)));
+                    tmp_parts.push(TokenSpan(Token::String(property), mk_span(span.start, span.end)));
                 } else {
                     self.state.src_pos = bak_pos;
                 }
@@ -591,9 +607,9 @@ impl<'a> Tokenizer<'a> {
                     Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
                     Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
                 };
-                parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start as usize)));
+                parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start)));
             }
-            parts.push(TokenSpan(Token::Variable(label), mk_span(span.start as usize -1, span.end as usize)));
+            parts.push(TokenSpan(Token::Variable(label), mk_span(span.start -1, span.end)));
             parts.extend(tmp_parts);
         } else {
             bytes.push(b'$');
@@ -619,7 +635,7 @@ impl<'a> Tokenizer<'a> {
                         Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
                         Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
                     };
-                    parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start as usize)));
+                    parts.push(TokenSpan(old_fragment, mk_span(start - len, start)));
                 }
                 parts.extend(tokens);
                 // undo the temporary tokenizer state transition
