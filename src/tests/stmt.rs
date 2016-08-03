@@ -398,7 +398,12 @@ fn parse_class_use_trait_complex() {
 
 #[test]
 fn parse_static_decl() {
-    assert_eq!(process_stmt("static $t=true;"), st!(0,14, Stmt_::Decl(Decl::StaticVars(vec![ ("t".into(), Some(enb!(10,14, constant!(true)))) ]))));
+    assert_eq!(process_stmt("static $t=true;"), st!(0,15, Stmt_::Decl(Decl::StaticVars(vec![ ("t".into(), Some(enb!(10,14, constant!(true)))) ]))));
+}
+
+#[test]
+fn parse_global_decl() {
+    assert_eq!(process_stmt("global $t;"), st!(0,10, Stmt_::Decl(Decl::GlobalVars(vec![ "t".into() ]))));
 }
 
 #[test]

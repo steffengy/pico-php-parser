@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use std::borrow::Borrow;
 use tokens::Token;
 use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr, Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
-use ast::{Member, MemberModifiers, MemberModifier};
+use ast::{Member, MemberModifiers, MemberModifier, Variable};
 
 pub struct PrettyPrinter<W: Write> {
     indentation: usize,
@@ -129,6 +129,17 @@ impl<W: Write> PrettyPrinter<W> {
                 }
                 self.write(";\n")
             },
+            Decl::GlobalVars(ref vars) => {
+                try!(self.write_indented("global "));
+                for (i, varname) in vars.iter().enumerate() {
+                    if i > 0 {
+                        try!(self.write(", "));
+                    }
+                    try!(self.write("$"));
+                    try!(self.print_variable(varname));
+                }
+                self.write(";\n")
+            }
         }
     }
 
@@ -443,6 +454,16 @@ impl<W: Write> PrettyPrinter<W> {
         self.print_expression_curly_parens(expr, false)
     }
 
+    fn print_variable(&mut self, v: &Variable) -> fmt::Result {
+        match *v {
+            Variable::Name(ref name) => write!(self.target, "${}", name.borrow() as &str),
+            Variable::Fetch(ref expr) => {
+                try!(self.write("$"));
+                self.print_expression_curly_parens(expr, true)
+            }
+        }
+    }
+
     pub fn print_expression(&mut self, expr: &Expr) -> fmt::Result {
         match expr.0 {
             Expr_::Path(ref path) => write!(self.target, "{}", path),
@@ -472,11 +493,7 @@ impl<W: Write> PrettyPrinter<W> {
                 self.write("]")
             }
             Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
-            Expr_::Variable(ref varname) => write!(self.target, "${}", varname.borrow() as &str),
-            Expr_::FetchVariable(ref varexpr) => {
-                try!(self.write("$"));
-                self.print_expression(varexpr)
-            },
+            Expr_::Variable(ref varname) => self.print_variable(varname),
             Expr_::Reference(ref ref_expr) => {
                 try!(self.write("&"));
                 self.print_expression(ref_expr)

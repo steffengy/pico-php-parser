@@ -15,6 +15,7 @@ use interner::{Interner, RcStr};
 pub use tokenizer::{Span, SyntaxError, TokenizerExternalState, mk_span};
 pub use ast::{Block, CatchClause, Expr, Expr_, IncludeTy, UnaryOp, Op, Path, SwitchCase, Stmt, Stmt_, NullableTy, Ty, TraitUse, UseClause};
 pub use ast::{Const, Decl, FunctionDecl, ClassDecl, ParamDefinition, Member, MemberModifier, MemberModifiers, ClassModifier, ClassModifiers};
+pub use ast::{Variable};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -368,18 +369,22 @@ impl Parser {
         Ok(true)
     }
 
-    fn parse_simple_variable(&mut self) -> Result<Expr, ParserError> {
+    fn parse_simple_variable(&mut self) -> Result<(Variable, Span), ParserError> {
         // TODO '$' '{' expr '}'
         // TODO '$' simple_variable
         if_lookahead!(self, Token::Dollar, _token, unimplemented!());
         // T_VARIABLE
         if_lookahead!(self, Token::Variable(_), _token, Ok(match _token {
-            TokenSpan(Token::Variable(varname), span) => Expr(Expr_::Variable(varname.into()), span),
+            TokenSpan(Token::Variable(varname), span) => (Variable::Name(varname.into()), span),
             _ => unreachable!(),
         }), {
-
             return Err(ParserError::new(vec![Token::Dollar, Token::Variable(self.interner.intern(""))], self.pos));
         })
+    }
+
+    fn parse_simple_variable_expr(&mut self) -> Result<Expr, ParserError> {
+        let (var, span) = try!(self.parse_simple_variable());
+        Ok(Expr(Expr_::Variable(var), span))
     }
 
     #[inline]
@@ -405,7 +410,7 @@ impl Parser {
     }
 
     fn parse_property_name(&mut self) -> Result<Expr, ParserError> {
-        alt!(self.parse_simple_variable());
+        alt!(self.parse_simple_variable_expr());
         if_lookahead!(self, Token::String(_), token, {
             return Ok(match token.0 {
                 Token::String(str_) => Expr(Expr_::Path(Path::identifier(false, str_.into())), token.1),
@@ -436,7 +441,7 @@ impl Parser {
                     return Ok((Expr(expr, span), false));
                 });
             }
-            deepest!(deepest_err, p.parse_simple_variable().map(|x| (x, false)));
+            deepest!(deepest_err, p.parse_simple_variable_expr().map(|x| (x, false)));
             if !simple_only {
                 deepest!(deepest_err, p.parse_dereferencable_scalar().map(|x| (x, false)));
             }
@@ -452,7 +457,7 @@ impl Parser {
             if let Ok(cls_name) = p.parse_class_name() {
                 if_lookahead!(p, Token::ScopeOp, _tok, {
                     let start_pos = { let Expr(_, ref span) = cls_name; span.start };
-                    if let Ok(var_name) = p.parse_simple_variable() {
+                    if let Ok(var_name) = p.parse_simple_variable_expr() {
                         let end_pos = { let Expr(_, ref span) = var_name; span.end };
                         return Ok((cls_name, var_name, mk_span(start_pos, end_pos)));
                     }
@@ -535,7 +540,7 @@ impl Parser {
                 }
             });
             // static member indexing
-            if_lookahead!(self, Token::ScopeOp, _tok, match (self.parse_simple_variable(), var_expr) {
+            if_lookahead!(self, Token::ScopeOp, _tok, match (self.parse_simple_variable_expr(), var_expr) {
                 (Err(_), var_expr_new) => var_expr = var_expr_new,
                 (Ok(p), Expr(Expr_::StaticMember(var, mut idxs), mut span)) => {
                     idxs.push(p);
@@ -1103,7 +1108,7 @@ impl Parser {
                 str_.clear();
                 match self.parse_identifier() {
                     Ok((name, span)) => {
-                        let mut  expr = try!(self.parse_variable(false, Some((Expr(Expr_::Variable(name), span), false))));
+                        let mut  expr = try!(self.parse_variable(false, Some((Expr(Expr_::Variable(Variable::Name(name)), span), false))));
                         expr.1.start = token.1.start;
                         expr.1.end = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, end_token, end_token.1.end);
                         parts.push(expr);
@@ -1111,7 +1116,7 @@ impl Parser {
                     Err(_) => {
                         let expr = try!(self.parse_expression(Precedence::None));
                         let end_pos = if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, end_token, end_token.1.end);
-                        parts.push(Expr(Expr_::FetchVariable(Box::new(expr)), mk_span(token.1.start, end_pos)));
+                        parts.push(Expr(Expr_::Variable(Variable::Fetch(Box::new(expr))), mk_span(token.1.start, end_pos)));
                     }
                 }
                 continue;
@@ -1257,6 +1262,36 @@ impl Parser {
             Stmt(Stmt_::Block(bl), span) => (bl, span),
             Stmt(stmt, span) => (Block(vec![Stmt(stmt, span.clone())]), span),
         })
+    }
+
+    // parse static variable declaration
+    fn parse_static_var_decl(&mut self, span: &Span) -> Result<Stmt, ParserError> {
+        let mut vars = vec![];
+        loop {
+            let var_name = if_lookahead_expect!(self, Token::Variable(_), Token::Variable(self.interner.intern("")), token, match token.0 {
+                Token::Variable(var) => var,
+                _ => unreachable!(),
+            });
+            let value = if_lookahead!(self, Token::Equal, _tok, Some(try!(self.parse_expression(Precedence::None))), None);
+            vars.push((var_name, value));
+            if_lookahead!(self, Token::Comma, _tok, continue, break);
+        }
+        if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
+        let span = mk_span(span.start, self.tokens[self.pos-1].1.end);
+        Ok(Stmt(Stmt_::Decl(Decl::StaticVars(vars)), span))
+    }
+
+    // parse static variable declaration
+    fn parse_global_var_decl(&mut self, span: &Span) -> Result<Stmt, ParserError> {
+        let mut vars = vec![];
+        loop {
+            let var = try!(self.parse_simple_variable());
+            vars.push(var.0);
+            if_lookahead!(self, Token::Comma, _tok, continue, break);
+        }
+        if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
+        let span = mk_span(span.start, self.tokens[self.pos-1].1.end);
+        Ok(Stmt(Stmt_::Decl(Decl::GlobalVars(vars)), span))
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParserError> {
@@ -1457,24 +1492,11 @@ impl Parser {
             },
             _ => ()
         }
-        // parse static variable declaration
-        fn parse_static_var_decl(p: &mut Parser, span: &Span) -> Result<Stmt, ParserError> {
-            let mut vars = vec![];
-            loop {
-                let var_name = if_lookahead_expect!(p, Token::Variable(_), Token::Variable(p.interner.intern("")), token, match token.0 {
-                    Token::Variable(var) => var,
-                    _ => unreachable!(),
-                });
-                let value = if_lookahead!(p, Token::Equal, _tok, Some(try!(p.parse_expression(Precedence::None))), None);
-                vars.push((var_name, value));
-                if_lookahead!(p, Token::Comma, _tok, continue, break);
-            }
-            if_lookahead_expect!(p, Token::SemiColon, Token::SemiColon);
-            let span = mk_span(span.start, p.tokens[p.pos-2].1.end);
-            Ok(Stmt(Stmt_::Decl(Decl::StaticVars(vars)), span))
-        }
         if_lookahead_restore!(self, Token::Static, token, {
-            deepest!(deepest_err, parse_static_var_decl(self, &token.1));
+            deepest!(deepest_err, self.parse_static_var_decl(&token.1));
+        });
+        if_lookahead_restore!(self, Token::Global, token, {
+            deepest!(deepest_err, self.parse_global_var_decl(&token.1));
         });
         // function declaration statement
         if_lookahead_restore!(self, Token::Function, token, {

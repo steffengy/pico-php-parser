@@ -171,6 +171,19 @@ impl Block {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum Variable {
+    Name(RcStr),
+    /// something like $$test, where another expression contains the name of the variable to be fetched
+    Fetch(Box<Expr>),
+}
+
+impl<T: Into<RcStr>> From<T> for Variable {
+    fn from(t: T) -> Variable {
+        Variable::Name(t.into())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
     /// indicates the path to e.g. a namespace or is a simple identifier (e.g. a runtime-constant)
     Path(Path),
@@ -181,9 +194,7 @@ pub enum Expr_ {
     Int(i64),
     Double(f64),
     Array(Vec<(Option<Expr>, Expr)>),
-    Variable(RcStr),
-    /// something like $$test, where another expression contains the name of the variable to be fetched
-    FetchVariable(Box<Expr>),
+    Variable(Variable),
     Reference(Box<Expr>),
     Clone(Box<Expr>),
     Isset(Vec<Expr>),
@@ -343,6 +354,7 @@ pub enum Decl {
     Interface(RcStr, Vec<Path>, Vec<Member>),
     Trait(RcStr, Vec<Member>),
     StaticVars(Vec<(RcStr, Option<Expr>)>),
+    GlobalVars(Vec<Variable>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
