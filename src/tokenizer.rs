@@ -25,7 +25,11 @@ impl AsSpanPos for usize {
 
 #[inline]
 pub fn mk_span<A: AsSpanPos, B: AsSpanPos>(start: A, end: B) -> Span {
-    Span { start: start.as_span_pos(), end: end.as_span_pos(), ..Span::new() }
+    Span {
+        start: start.as_span_pos(),
+        end: end.as_span_pos(),
+        ..Span::new()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,13 +71,19 @@ impl LineMap {
         let mut a = 0;
         while b - a > 1 {
             let mid = (a + b) / 2;
-            if self.data[mid] as usize > pos { b = mid; } else { a = mid; }
+            if self.data[mid] as usize > pos {
+                b = mid;
+            } else {
+                a = mid;
+            }
         }
         a
     }
 
     pub fn line(&self, line: usize) -> (u32, u32) {
-        let end = if line+1 < self.data.len() { self.data[line+1] } else {
+        let end = if line + 1 < self.data.len() {
+            self.data[line + 1]
+        } else {
             self.end_pos as u32
         };
         (self.data[line], end)
@@ -94,9 +104,7 @@ pub struct TokenizerExternalState {
 
 impl TokenizerExternalState {
     fn new() -> TokenizerExternalState {
-        TokenizerExternalState {
-            line_map: LineMap::new(),
-        }
+        TokenizerExternalState { line_map: LineMap::new() }
     }
 }
 
@@ -151,11 +159,11 @@ macro_rules! match_token_alias {
 }
 
 macro_rules! match_token {
-    // set state syntax
+// set state syntax
     ($self_:expr, $token:ident, state=$new_state:ident) => {match_token_alias!($self_, Token::$token.repr(), $token, state=$new_state)};
-    // state unchanged
+// state unchanged
     ($self_:expr, $token:ident) => {match_token_alias!($self_, Token::$token.repr(), $token)};
-    // state push
+// state push
     ($self_:expr, $token:ident, state<-$new_state:ident) => {{
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with(str_repr) {
@@ -166,7 +174,7 @@ macro_rules! match_token {
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
     }};
-    // state pop
+// state pop
     ($self_:expr, $token:ident, state->) => {{
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with(str_repr) {
@@ -251,12 +259,14 @@ impl<'a> Tokenizer<'a> {
     fn whitespace(&mut self) {
         while !self.input().is_empty() {
             match self.input().chars().nth(0).unwrap() {
-                ' ' | '\t' | '\r' => {self.advance(1);},
+                ' ' | '\t' | '\r' => {
+                    self.advance(1);
+                }
                 '\n' => {
                     self.advance(1);
                     self.state.next_line();
-                },
-                _ => break
+                }
+                _ => break,
             }
         }
     }
@@ -265,17 +275,21 @@ impl<'a> Tokenizer<'a> {
     fn whitespace_only(&mut self) {
         while !self.input().is_empty() {
             match self.input().chars().nth(0).unwrap() {
-                ' ' | '\t' => {self.advance(1);},
-                _ => break
+                ' ' | '\t' => {
+                    self.advance(1);
+                }
+                _ => break,
             }
         }
     }
 
     /// match exactly one newline
     fn newline(&mut self) -> bool {
-        let amount = if self.input().starts_with("\r\n") { 2 }
-        else if self.input().starts_with('\n') || self.input().starts_with('\r') { 1 }
-        else {
+        let amount = if self.input().starts_with("\r\n") {
+            2
+        } else if self.input().starts_with('\n') || self.input().starts_with('\r') {
+            1
+        } else {
             return false;
         };
         self.advance(amount);
@@ -286,22 +300,26 @@ impl<'a> Tokenizer<'a> {
     // re2c stuff (mostly prefixed with _)
     fn _label(&mut self) -> Option<(&'a str, Span)> {
         if self.input().is_empty() {
-            return None
+            return None;
         }
         if let Some('0'...'9') = self.input().chars().nth(0) {
-            return None
+            return None;
         }
 
-        //\u{0080} U+0080
-        //\u{00BF} U+00FF
+        // \u{0080} U+0080
+        // \u{00BF} U+00FF
         let end_pos = self.input().chars().position(|x| match x {
-            'a'...'z' | 'A'...'Z' | '\u{80}'...'\u{FF}' | '_' | '0'...'9' => false,
+            'a'...'z' |
+            'A'...'Z' |
+            '\u{80}'...'\u{FF}' |
+            '_' |
+            '0'...'9' => false,
             _ => true,
         });
         let end_pos = match end_pos {
             Some(0) => return None,
             Some(x) => x,
-            None => self.input().len()
+            None => self.input().len(),
         };
         let old_pos = self.input_pos();
         let ret = self.advance(end_pos);
@@ -378,7 +396,7 @@ impl<'a> Tokenizer<'a> {
             Some(0) if str_.len() == 1 => {
                 self.state.src_pos = old_pos;
                 return Err(SyntaxError::None);
-            },
+            }
             Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos(), end_pos);
@@ -394,11 +412,11 @@ impl<'a> Tokenizer<'a> {
         self.advance(2);
         let end_pos = match self.input().chars().position(|x| match x {
             'a'...'f' | 'A'...'F' | '0'...'9' => false,
-            _ => true
+            _ => true,
         }) {
             None => self.input().len(),
             Some(0) => return Err(SyntaxError::None),
-            Some(end_pos) => end_pos
+            Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos() - 2, end_pos);
         let str_ = self.advance(end_pos);
@@ -408,13 +426,13 @@ impl<'a> Tokenizer<'a> {
     /// match a binary number
     fn _bnum(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().len() < 3 || !self.input().starts_with("0b") {
-            return Err(SyntaxError::None)
+            return Err(SyntaxError::None);
         }
         self.advance(2);
         let end_pos = match self.input().chars().position(|x| x != '0' && x != '1') {
             None => self.input().len(),
             Some(0) => return Err(SyntaxError::None),
-            Some(end_pos) => end_pos
+            Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos() - 2, end_pos);
         let str_ = self.advance(end_pos);
@@ -424,7 +442,7 @@ impl<'a> Tokenizer<'a> {
     /// matches ${label} so any valid variable_name
     fn match_variable(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().len() < 2 || !self.input().starts_with('$') {
-            return Err(SyntaxError::None)
+            return Err(SyntaxError::None);
         }
         let bak_pos = self.input_pos();
         self.advance(1);
@@ -432,7 +450,7 @@ impl<'a> Tokenizer<'a> {
             Some((name, mut span)) => {
                 span.start = bak_pos as u32;
                 Ok(TokenSpan(Token::Variable(name), span))
-            },
+            }
             None => {
                 self.state.src_pos = bak_pos;
                 Err(SyntaxError::None)
@@ -452,7 +470,8 @@ impl<'a> Tokenizer<'a> {
             (Some('\''), true) => Some(b'\''),
             (Some('\\'), _) => Some(b'\\'),
             (Some('$'), false) => Some(b'$'),
-            (Some(x @ 'x'), false) | (Some(x @ 'X'), false) => {
+            (Some(x @ 'x'), false) |
+            (Some(x @ 'X'), false) => {
                 // read up to 2 hex characters, on 0 add \x to bytes
                 let mut end_idx = 0;
                 for i in 2..4 {
@@ -466,13 +485,13 @@ impl<'a> Tokenizer<'a> {
                     Some(x as u8)
                 } else {
                     let start_pos = self.input().char_indices().nth(2).unwrap().0;
-                    let end_pos = self.input().char_indices().nth(end_idx+1).unwrap().0;
+                    let end_pos = self.input().char_indices().nth(end_idx + 1).unwrap().0;
                     let byte = u8::from_str_radix(&self.input()[start_pos..end_pos], 16).unwrap();
                     bytes.push(byte);
                     self.advance(1 + end_idx);
                     return Ok(());
                 }
-            },
+            }
             (Some('u'), false) => unimplemented!(),
             (Some(x), _) => {
                 bytes.push(b'\\');
@@ -480,7 +499,7 @@ impl<'a> Tokenizer<'a> {
                 tmp_str.push(x);
                 bytes.extend(tmp_str.as_bytes());
                 None
-            },
+            }
             _ => return Err(SyntaxError::Unterminated("string escape sequence", mk_span(self.input_pos(), self.input_pos() + 1))),
         };
         self.advance(2);
@@ -491,7 +510,12 @@ impl<'a> Tokenizer<'a> {
     }
 
     #[inline]
-    fn return_tokens_from_parts(&mut self, start_tok: TokenSpan, end_tok: TokenSpan, bytes: Vec<u8>, parts: Vec<TokenSpan>) -> TokenSpan {
+    fn return_tokens_from_parts(&mut self,
+                                start_tok: TokenSpan,
+                                end_tok: TokenSpan,
+                                bytes: Vec<u8>,
+                                parts: Vec<TokenSpan>)
+                                -> TokenSpan {
         let (start_pos, end_pos) = (start_tok.1.start, end_tok.1.end);
         self.queue.push(end_tok);
         if !bytes.is_empty() {
@@ -511,7 +535,7 @@ impl<'a> Tokenizer<'a> {
     /// matches a single-quoted string literal
     fn match_sq_string(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().len() < 2 {
-            return Err(SyntaxError::None)
+            return Err(SyntaxError::None);
         }
         // backup the whole state, since line counting needs resetting too
         let bak_state = self.state.clone();
@@ -527,22 +551,23 @@ impl<'a> Tokenizer<'a> {
         // repeatedly progress until we encounter an escape sequence (or end)
         let mut bytes: Vec<u8> = vec![];
         loop {
-            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '\'' || x == '\n') {
-                Some(end_pos) => end_pos,
-                None => self.input().len(),
-            };
+            let end_pos =
+                match self.input().chars().position(|x| x == '\\' || x == '\'' || x == '\n') {
+                    Some(end_pos) => end_pos,
+                    None => self.input().len(),
+                };
             bytes.extend(self.advance(end_pos).as_bytes());
             match self.input().chars().nth(0) {
                 Some('\n') => {
                     self.advance(1);
                     self.state.next_line();
                     bytes.push(b'\n');
-                },
+                }
                 Some('\\') => try!(self.str_escape(&mut bytes, true)),
                 Some('\'') => {
                     self.advance(1);
                     break;
-                },
+                }
                 _ => {
                     let old_pos = self.state.src_pos;
                     self.state = bak_state;
@@ -607,14 +632,17 @@ impl<'a> Tokenizer<'a> {
                 };
                 parts.push(TokenSpan(old_fragment, mk_span(start as usize - len, start)));
             }
-            parts.push(TokenSpan(Token::Variable(label), mk_span(span.start -1, span.end)));
+            parts.push(TokenSpan(Token::Variable(label), mk_span(span.start - 1, span.end)));
             parts.extend(tmp_parts);
         } else {
             bytes.push(b'$');
         }
     }
 
-    fn str_block(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>, require_dollar: bool) {
+    fn str_block(&mut self,
+                 bytes: &mut Vec<u8>,
+                 parts: &mut Vec<TokenSpan>,
+                 require_dollar: bool) {
         self.advance(1);
         if self.input().starts_with('$') || !require_dollar {
             let bak_state = self.state.clone();
@@ -650,7 +678,7 @@ impl<'a> Tokenizer<'a> {
     /// matches a double-quoted string literal
     fn match_dq_string(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().len() < 2 {
-            return Err(SyntaxError::None)
+            return Err(SyntaxError::None);
         }
         let bak_state_str = self.state.clone();
         if self.input().starts_with("b\"") {
@@ -666,7 +694,9 @@ impl<'a> Tokenizer<'a> {
         let mut parts = vec![];
         let mut bytes: Vec<u8> = vec![];
         loop {
-            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
+            let end_pos = match self.input()
+                .chars()
+                .position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len() - 1,
             };
@@ -677,12 +707,12 @@ impl<'a> Tokenizer<'a> {
                     self.advance(1);
                     self.state.next_line();
                     bytes.push(b'\n');
-                },
+                }
                 Some('\\') => try!(self.str_escape(&mut bytes, false)),
                 Some('"') => {
                     self.advance(1);
-                    break
-                },
+                    break;
+                }
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
                 Some('{') => self.str_block(&mut bytes, &mut parts, true),
@@ -704,7 +734,7 @@ impl<'a> Tokenizer<'a> {
     /// backquote handling
     fn match_backquote(&mut self) -> Result<TokenSpan, SyntaxError> {
         if self.input().len() < 2 {
-            return Err(SyntaxError::None)
+            return Err(SyntaxError::None);
         }
         let bak_state_str = if self.input().starts_with('`') {
             let bak_state = self.state.clone();
@@ -716,7 +746,9 @@ impl<'a> Tokenizer<'a> {
         let mut parts = vec![];
         let mut bytes: Vec<u8> = vec![];
         loop {
-            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
+            let end_pos = match self.input()
+                .chars()
+                .position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len() - 1,
             };
@@ -727,11 +759,11 @@ impl<'a> Tokenizer<'a> {
                     self.advance(1);
                     self.state.next_line();
                     bytes.push(b'\n');
-                },
+                }
                 Some('`') => {
                     self.advance(1);
-                    break
-                },
+                    break;
+                }
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
                 // match {$<IN_SCRIPTING>} block
                 Some('{') => self.str_block(&mut bytes, &mut parts, true),
@@ -782,7 +814,9 @@ impl<'a> Tokenizer<'a> {
             self.advance(1);
         }
         // match the label
-        let label = if let Some(label) = self._label().map(|x| x.0.to_owned()) { label } else {
+        let label = if let Some(label) = self._label().map(|x| x.0.to_owned()) {
+            label
+        } else {
             self.state = bak_state_str;
             return Err(SyntaxError::None);
         };
@@ -812,13 +846,15 @@ impl<'a> Tokenizer<'a> {
 
         let is_now_doc = match doc_ty {
             DocType::NowDoc => true,
-            _ => false
+            _ => false,
         };
 
         // match characters until we find the required end_tag
         let end_tag = label;
         loop {
-            let end_pos = match self.input().chars().position(|x| x == '\\' || x == '$' || x == '\n' || x == '{') {
+            let end_pos = match self.input()
+                .chars()
+                .position(|x| x == '\\' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
             };
@@ -843,7 +879,7 @@ impl<'a> Tokenizer<'a> {
                     } else {
                         bytes.push(b'\n');
                     }
-                },
+                }
                 (Some('\\'), _) => try!(self.str_escape(&mut bytes, is_now_doc)),
                 (Some('$'), false) => self.str_variable(&mut bytes, &mut parts),
                 (Some('{'), false) => self.str_block(&mut bytes, &mut parts, true),
@@ -875,36 +911,43 @@ impl<'a> Tokenizer<'a> {
         let old_pos = self.input_pos();
         let mut doc_comment = false;
         // single line comment
-        let start_tokens_count =
-            if self.input().starts_with('#') { 1 }
-            else if self.input().starts_with("//") { 2 }
-        else { 0 };
-        let comment = if start_tokens_count > 0 {
-            self.advance(start_tokens_count);
-            let end_pos = match self.input().chars().position(|x| x == '\n') {
-                Some(end_pos) => end_pos,
-                None => self.input().len(),
-            };
-            self.advance(end_pos)
+        let start_tokens_count = if self.input().starts_with('#') {
+            1
+        } else if self.input().starts_with("//") {
+            2
         } else {
-            // block comment
-            let start_tokens_count =
-                if self.input().starts_with("/*") { 2 }
-                else if self.input().starts_with("/**") { doc_comment = true; 3 }
-            else { 0 };
-            if start_tokens_count > 0 {
+            0
+        };
+        let comment = if start_tokens_count > 0 {
                 self.advance(start_tokens_count);
-                let end_pos = match self.input().find("*/") {
+                let end_pos = match self.input().chars().position(|x| x == '\n') {
                     Some(end_pos) => end_pos,
-                    None => {
-                        let old_pos = self.state.src_pos;
-                        self.state.src_pos = old_pos;
-                        return Err(SyntaxError::Unterminated("comment", mk_span(self.input_pos(), old_pos)));
-                    },
+                    None => self.input().len(),
                 };
-                let ret = self.advance(end_pos);
-                self.advance(2);
-                ret
+                self.advance(end_pos)
+            } else {
+                // block comment
+                let start_tokens_count = if self.input().starts_with("/*") {
+                    2
+                } else if self.input().starts_with("/**") {
+                    doc_comment = true;
+                    3
+                } else {
+                    0
+                };
+                if start_tokens_count > 0 {
+                    self.advance(start_tokens_count);
+                    let end_pos = match self.input().find("*/") {
+                        Some(end_pos) => end_pos,
+                        None => {
+                            let old_pos = self.state.src_pos;
+                            self.state.src_pos = old_pos;
+                        	return Err(SyntaxError::Unterminated("comment", mk_span(self.input_pos(), old_pos)));
+                    	}
+                    };
+                    let ret = self.advance(end_pos);
+                    self.advance(2);
+                    ret
             } else {
                 return Err(SyntaxError::None);
             }
@@ -945,7 +988,7 @@ impl<'a> Tokenizer<'a> {
                 Err(SyntaxError::None) if self.state.restart => {
                     self.state.restart = false;
                     continue;
-                },
+                }
                 _ => return ret,
             }
         }
@@ -971,15 +1014,17 @@ impl<'a> Tokenizer<'a> {
                     None => (false, input.len()),
                     Some(x) => (true, x),
                 };
-                let is_php_tag = if is_php_tag && self.short_tags { true } else {
+                let is_php_tag = if is_php_tag && self.short_tags {
+                    true
+                } else {
                     input.starts_with("<?=") || input.starts_with("<?php")
                 };
                 if is_php_tag || next_pos == input.len() {
                     end_pos += next_pos;
-                    break
+                    break;
                 }
                 // move on (skip) on <? with short-tags disabled and no PHP "open-suffix" (= or php)
-                input = &input[next_pos+2..];
+                input = &input[next_pos + 2..];
             }
         }
         if end_pos != 0 {
@@ -995,7 +1040,7 @@ impl<'a> Tokenizer<'a> {
         self.whitespace();
         // check if we are at the end of the input
         if self.input().is_empty() {
-            return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())))
+            return Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())));
         }
         let mut ret = vec![];
         let old_pos = self.input_pos();
@@ -1065,66 +1110,68 @@ impl<'a> Tokenizer<'a> {
                     let span = mk_span(old_pos, self.input_pos());
                     Ok(TokenSpan(Token::Yield, span))
                 }
-            } else { Err(SyntaxError::None) }
+            } else {
+                Err(SyntaxError::None)
+            }
         });
-        ret_token!(match_token!(self,   Try));
-        ret_token!(match_token!(self,   Catch));
-        ret_token!(match_token!(self,   Finally));
-        ret_token!(match_token!(self,   Throw));
-        ret_token!(match_token!(self,   If));
-        ret_token!(match_token!(self,   ElseIf));
-        ret_token!(match_token!(self,   EndIf));
-        ret_token!(match_token!(self,   Else));
-        ret_token!(match_token!(self,   While));
-        ret_token!(match_token!(self,   EndWhile));
-        ret_token!(match_token!(self,   Do));
-        ret_token!(match_token!(self,   Foreach));
-        ret_token!(match_token!(self,   EndForeach));
-        ret_token!(match_token!(self,   For));
-        ret_token!(match_token!(self,   Endfor));
-        ret_token!(match_token!(self,   Declare));
-        ret_token!(match_token!(self,   EndDeclare));
-        ret_token!(match_token!(self,   InstanceOf));
-        ret_token!(match_token!(self,   As));
-        ret_token!(match_token!(self,   Switch));
-        ret_token!(match_token!(self,   EndSwitch));
-        ret_token!(match_token!(self,   Case));
-        ret_token!(match_token!(self,   Default));
-        ret_token!(match_token!(self,   Break));
-        ret_token!(match_token!(self,   Continue));
-        ret_token!(match_token!(self,   Goto));
-        ret_token!(match_token!(self,   Echo));
-        ret_token!(match_token!(self,   Print));
-        ret_token!(match_token!(self,   Class));
-        ret_token!(match_token!(self,   Interface));
-        ret_token!(match_token!(self,   Trait));
-        ret_token!(match_token!(self,   Extends));
-        ret_token!(match_token!(self,   Implements));
-        ret_token!(match_token!(self,   ObjectOp, state <- LookingForProperty));
-        ret_token!(match_token!(self,   ScopeOp));
-        ret_token!(match_token!(self,   NsSeparator));
-        ret_token!(match_token!(self,   Ellipsis));
-        ret_token!(match_token!(self,   Coalesce));
-        ret_token!(match_token!(self,   New));
-        ret_token!(match_token!(self,   Clone));
-        ret_token!(match_token!(self,   Var));
+        ret_token!(match_token!(self, Try));
+        ret_token!(match_token!(self, Catch));
+        ret_token!(match_token!(self, Finally));
+        ret_token!(match_token!(self, Throw));
+        ret_token!(match_token!(self, If));
+        ret_token!(match_token!(self, ElseIf));
+        ret_token!(match_token!(self, EndIf));
+        ret_token!(match_token!(self, Else));
+        ret_token!(match_token!(self, While));
+        ret_token!(match_token!(self, EndWhile));
+        ret_token!(match_token!(self, Do));
+        ret_token!(match_token!(self, Foreach));
+        ret_token!(match_token!(self, EndForeach));
+        ret_token!(match_token!(self, For));
+        ret_token!(match_token!(self, Endfor));
+        ret_token!(match_token!(self, Declare));
+        ret_token!(match_token!(self, EndDeclare));
+        ret_token!(match_token!(self, InstanceOf));
+        ret_token!(match_token!(self, As));
+        ret_token!(match_token!(self, Switch));
+        ret_token!(match_token!(self, EndSwitch));
+        ret_token!(match_token!(self, Case));
+        ret_token!(match_token!(self, Default));
+        ret_token!(match_token!(self, Break));
+        ret_token!(match_token!(self, Continue));
+        ret_token!(match_token!(self, Goto));
+        ret_token!(match_token!(self, Echo));
+        ret_token!(match_token!(self, Print));
+        ret_token!(match_token!(self, Class));
+        ret_token!(match_token!(self, Interface));
+        ret_token!(match_token!(self, Trait));
+        ret_token!(match_token!(self, Extends));
+        ret_token!(match_token!(self, Implements));
+        ret_token!(match_token!(self, ObjectOp, state <- LookingForProperty));
+        ret_token!(match_token!(self, ScopeOp));
+        ret_token!(match_token!(self, NsSeparator));
+        ret_token!(match_token!(self, Ellipsis));
+        ret_token!(match_token!(self, Coalesce));
+        ret_token!(match_token!(self, New));
+        ret_token!(match_token!(self, Clone));
+        ret_token!(match_token!(self, Var));
 
         // match cast tokens, all in one-try
         if self.input().starts_with('(') {
             #[inline]
             fn try_determine_cast_type(self_: &mut Tokenizer) -> Result<TokenSpan, SyntaxError> {
-                ret_token!(match_token!(self_,  CastInt));
+                ret_token!(match_token!(self_, CastInt));
                 ret_token!(match_token_alias!(self_, "int", CastInt));
                 ret_token!(match_token_alias!(self_, "real", CastDouble));
-                ret_token!(match_token!(self_,  CastDouble));
-                ret_token!(match_token_alias!(self_, "float",  CastDouble));
-                ret_token!(match_token!(self_,  CastString));
+                ret_token!(match_token!(self_, CastDouble));
+                ret_token!(match_token_alias!(self_, "float", CastDouble));
+                ret_token!(match_token!(self_, CastString));
                 ret_token!(match_token_alias!(self_, "binary", CastString));
-                ret_token!(match_token!(self_,  CastArray));
-                ret_token!(match_token!(self_,  CastObject));
+                ret_token!(match_token!(self_, CastArray));
+                ret_token!(match_token!(self_, CastObject));
                 ret_token!(match_token_alias!(self_, "boolean", CastBool));
-                ret_token!(match_token!(self_,  CastBool));
-                ret_token!(match_token!(self_,  CastUnset));
+                ret_token!(match_token!(self_, CastBool));
+                ret_token!(match_token!(self_, CastUnset));
                 Err(SyntaxError::None)
             }
             let old_pos = self.input_pos();
@@ -1140,76 +1187,76 @@ impl<'a> Tokenizer<'a> {
             // restore the position if we didn't match a catch
             self.state.src_pos = old_pos;
         }
-        ret_token!(match_token!(self,   Eval));
-        ret_token!(match_token!(self,   IncludeOnce));
-        ret_token!(match_token!(self,   Include));
-        ret_token!(match_token!(self,   RequireOnce));
-        ret_token!(match_token!(self,   Require));
-        ret_token!(match_token!(self,   Namespace));
-        ret_token!(match_token!(self,   Use));
-        ret_token!(match_token!(self,   Insteadof));
-        ret_token!(match_token!(self,   Global));
-        ret_token!(match_token!(self,   Isset));
-        ret_token!(match_token!(self,   Empty));
-        ret_token!(match_token!(self,   HaltCompiler));
-        ret_token!(match_token!(self,   Static));
-        ret_token!(match_token!(self,   Abstract));
-        ret_token!(match_token!(self,   Final));
-        ret_token!(match_token!(self,   Private));
-        ret_token!(match_token!(self,   Protected));
-        ret_token!(match_token!(self,   Public));
-        ret_token!(match_token!(self,   Unset));
-        ret_token!(match_token!(self,   DoubleArrow));
-        ret_token!(match_token!(self,   List));
-        ret_token!(match_token!(self,   Array));
-        ret_token!(match_token!(self,   Callable));
-        ret_token!(match_token!(self,   Increment));
-        ret_token!(match_token!(self,   Decrement));
-        ret_token!(match_token!(self,   IsIdentical));
-        ret_token!(match_token!(self,   IsNotIdentical));
-        ret_token!(match_token!(self,   IsEqual));
-        ret_token!(match_token!(self,   IsNotEqual));
+        ret_token!(match_token!(self, Eval));
+        ret_token!(match_token!(self, IncludeOnce));
+        ret_token!(match_token!(self, Include));
+        ret_token!(match_token!(self, RequireOnce));
+        ret_token!(match_token!(self, Require));
+        ret_token!(match_token!(self, Namespace));
+        ret_token!(match_token!(self, Use));
+        ret_token!(match_token!(self, Insteadof));
+        ret_token!(match_token!(self, Global));
+        ret_token!(match_token!(self, Isset));
+        ret_token!(match_token!(self, Empty));
+        ret_token!(match_token!(self, HaltCompiler));
+        ret_token!(match_token!(self, Static));
+        ret_token!(match_token!(self, Abstract));
+        ret_token!(match_token!(self, Final));
+        ret_token!(match_token!(self, Private));
+        ret_token!(match_token!(self, Protected));
+        ret_token!(match_token!(self, Public));
+        ret_token!(match_token!(self, Unset));
+        ret_token!(match_token!(self, DoubleArrow));
+        ret_token!(match_token!(self, List));
+        ret_token!(match_token!(self, Array));
+        ret_token!(match_token!(self, Callable));
+        ret_token!(match_token!(self, Increment));
+        ret_token!(match_token!(self, Decrement));
+        ret_token!(match_token!(self, IsIdentical));
+        ret_token!(match_token!(self, IsNotIdentical));
+        ret_token!(match_token!(self, IsEqual));
+        ret_token!(match_token!(self, IsNotEqual));
         ret_token!(match_token_alias!(self, "<>", IsNotEqual));
-        ret_token!(match_token!(self,   SpaceShip));
-        ret_token!(match_token!(self,   IsSmallerOrEqual));
-        ret_token!(match_token!(self,   IsGreaterOrEqual));
-        ret_token!(match_token!(self,   PlusEqual));
-        ret_token!(match_token!(self,   MinusEqual));
-        ret_token!(match_token!(self,   MulEqual));
-        ret_token!(match_token!(self,   Pow));
-        ret_token!(match_token!(self,   PowEqual));
-        ret_token!(match_token!(self,   DivEqual));
-        ret_token!(match_token!(self,   ConcatEqual));
-        ret_token!(match_token!(self,   ModEqual));
-        ret_token!(match_token!(self,   SlEqual));
-        ret_token!(match_token!(self,   SrEqual));
-        ret_token!(match_token!(self,   AndEqual));
-        ret_token!(match_token!(self,   OrEqual));
-        ret_token!(match_token!(self,   XorEqual));
-        ret_token!(match_token!(self,   BoolOr));
-        ret_token!(match_token!(self,   BoolAnd));
-        ret_token!(match_token!(self,   LogicalOr));
-        ret_token!(match_token!(self,   LogicalAnd));
-        ret_token!(match_token!(self,   LogicalXor));
-        ret_token!(match_token!(self,   Sl));
-        ret_token!(match_token!(self,   Sr));
-        ret_token!(match_token!(self,   CurlyBracesOpen, state <- InScripting));
+        ret_token!(match_token!(self, SpaceShip));
+        ret_token!(match_token!(self, IsSmallerOrEqual));
+        ret_token!(match_token!(self, IsGreaterOrEqual));
+        ret_token!(match_token!(self, PlusEqual));
+        ret_token!(match_token!(self, MinusEqual));
+        ret_token!(match_token!(self, MulEqual));
+        ret_token!(match_token!(self, Pow));
+        ret_token!(match_token!(self, PowEqual));
+        ret_token!(match_token!(self, DivEqual));
+        ret_token!(match_token!(self, ConcatEqual));
+        ret_token!(match_token!(self, ModEqual));
+        ret_token!(match_token!(self, SlEqual));
+        ret_token!(match_token!(self, SrEqual));
+        ret_token!(match_token!(self, AndEqual));
+        ret_token!(match_token!(self, OrEqual));
+        ret_token!(match_token!(self, XorEqual));
+        ret_token!(match_token!(self, BoolOr));
+        ret_token!(match_token!(self, BoolAnd));
+        ret_token!(match_token!(self, LogicalOr));
+        ret_token!(match_token!(self, LogicalAnd));
+        ret_token!(match_token!(self, LogicalXor));
+        ret_token!(match_token!(self, Sl));
+        ret_token!(match_token!(self, Sr));
+        ret_token!(match_token!(self, CurlyBracesOpen, state <- InScripting));
         ret_token!(match match_token!(self, CurlyBracesClose, state ->) {
             Ok(TokenSpan(token, mut span)) => {
                 // equivalent of RESET_DOC_COMMENT()
                 span.doc_comment = Some("".to_owned());
                 Ok(TokenSpan(token, span))
-            },
+            }
             x => x,
         }); //TODO: stack is allowed to be empty! (dont fail once error handling is implemented)
-        ret_token!(match_token!(self,  MagicClass));
-        ret_token!(match_token!(self,  MagicTrait));
-        ret_token!(match_token!(self,  MagicFunction));
-        ret_token!(match_token!(self,  MagicMethod));
-        ret_token!(match_token!(self,  MagicLine));
-        ret_token!(match_token!(self,  MagicFile));
-        ret_token!(match_token!(self,  MagicDir));
-        ret_token!(match_token!(self,  MagicNamespace));
+        ret_token!(match_token!(self, MagicClass));
+        ret_token!(match_token!(self, MagicTrait));
+        ret_token!(match_token!(self, MagicFunction));
+        ret_token!(match_token!(self, MagicMethod));
+        ret_token!(match_token!(self, MagicLine));
+        ret_token!(match_token!(self, MagicFile));
+        ret_token!(match_token!(self, MagicDir));
+        ret_token!(match_token!(self, MagicNamespace));
         ret_token!(self._token()); //{TOKENS}, keep this last
         Err(SyntaxError::UnknownCharacter(mk_span(self.input_pos(), self.input_pos() + 1)))
     }
@@ -1223,7 +1270,7 @@ impl<'a> Tokenizer<'a> {
             Some((x, span)) => {
                 state_helper!(pop, self);
                 return Ok(TokenSpan(Token::String(x), span));
-            },
+            }
         }
         // ANY_CHAR: pop_state
         self.pop_state();
@@ -1234,7 +1281,7 @@ impl<'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{State};
+    use super::State;
     use super::*;
 
     macro_rules! assert_eq_tok {
@@ -1267,7 +1314,8 @@ mod tests {
     #[test]
     fn simple_cast() {
         let mut tokenizer = Tokenizer::new("<?php  (string) ?>");
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::CastString), Ok(Token::CloseTag)]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3),
+                   vec![Ok(Token::OpenTag), Ok(Token::CastString), Ok(Token::CloseTag)]);
     }
 
     #[test]
@@ -1293,110 +1341,159 @@ mod tests {
     #[test]
     fn simple_lnum() {
         let mut tokenizer = Tokenizer::new("<?php  42");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(42))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Int(42))]);
     }
 
     #[test]
     fn simple_onum() {
         let mut tokenizer = Tokenizer::new("<?php  0144");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(100))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Int(100))]);
     }
 
     #[test]
     fn simple_bnum() {
         let mut tokenizer = Tokenizer::new("<?php  0b101");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(5))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Int(5))]);
     }
 
     #[test]
     fn simple_hnum() {
         let mut tokenizer = Tokenizer::new("<?php  0xff");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Int(255))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Int(255))]);
     }
 
     #[test]
     fn simple_dnum() {
         let mut tokenizer = Tokenizer::new("<?php  .10");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Double(0.1))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Double(0.1))]);
         let mut tokenizer = Tokenizer::new("<?php  1.");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Double(1.0))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Double(1.0))]);
         let mut tokenizer = Tokenizer::new("<?php  1.1");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Double(1.1))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Double(1.1))]);
     }
 
     #[test]
     fn dq_string() {
         let mut tokenizer = Tokenizer::new("<?php \"testhallo\\nwelt\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote),
-            Ok(Token::ConstantEncapsedString("testhallo\nwelt".into())), Ok(Token::DoubleQuote)]
-        );
+        assert_eq!(get_n_tokens(&mut tokenizer, 4),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::ConstantEncapsedString("testhallo\nwelt".into())),
+                        Ok(Token::DoubleQuote)]);
         let mut tokenizer = Tokenizer::new(r#"<?php "testhallo\"welt\"""#);
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("testhallo\"welt\"".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::ConstantEncapsedString("testhallo\"welt\"".into()))]);
         // check if we can handle UTF-8 without crashing
         let mut tokenizer = Tokenizer::new("<?php \"转\\t注\\t字\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 3), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("转\t注\t字".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 3),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::ConstantEncapsedString("转\t注\t字".into()))]);
     }
 
     #[test]
     fn sq_string() {
         let mut tokenizer = Tokenizer::new("<?php 'testhallo\\nwelt \\'g\\''");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("testhallo\\nwelt 'g'".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::ConstantEncapsedString("testhallo\\nwelt 'g'".into()))]);
     }
 
     #[test]
     fn dq_string_var() {
         let mut tokenizer = Tokenizer::new("<?php \"ab $world cd\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::ConstantEncapsedString("ab ".into())),
-                Ok(Token::Variable("world".into())), Ok(Token::ConstantEncapsedString(" cd".into())), Ok(Token::DoubleQuote)
-        ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 6),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::ConstantEncapsedString("ab ".into())),
+                        Ok(Token::Variable("world".into())),
+                        Ok(Token::ConstantEncapsedString(" cd".into())),
+                        Ok(Token::DoubleQuote)]);
         let mut tokenizer = Tokenizer::new("<?php \"$world->ab\"");
         assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".into())), Ok(Token::ObjectOp),
             Ok(Token::String("ab".into())), Ok(Token::DoubleQuote),
         ]);
         let mut tokenizer = Tokenizer::new("<?php \"$world->ab->cd\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 7), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::Variable("world".into())), Ok(Token::ObjectOp),
-            Ok(Token::String("ab".into())), Ok(Token::ConstantEncapsedString("->cd".into())), Ok(Token::DoubleQuote)
-        ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 7),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::Variable("world".into())),
+                        Ok(Token::ObjectOp),
+                        Ok(Token::String("ab".into())),
+                        Ok(Token::ConstantEncapsedString("->cd".into())),
+                        Ok(Token::DoubleQuote)]);
         let mut tokenizer = Tokenizer::new("<?php \"{$world->ab->cd}\"");
-        assert_eq!(get_n_tokens(&mut tokenizer, 9), vec![Ok(Token::OpenTag), Ok(Token::DoubleQuote), Ok(Token::CurlyBracesOpen), Ok(Token::Variable("world".into())),
-            Ok(Token::ObjectOp), Ok(Token::String("ab".into())), Ok(Token::ObjectOp), Ok(Token::String("cd".into())), Ok(Token::CurlyBracesClose)
-        ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 9),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::CurlyBracesOpen),
+                        Ok(Token::Variable("world".into())),
+                        Ok(Token::ObjectOp),
+                        Ok(Token::String("ab".into())),
+                        Ok(Token::ObjectOp),
+                        Ok(Token::String("cd".into())),
+                        Ok(Token::CurlyBracesClose)]);
     }
 
     #[test]
     fn backquote() {
         let mut tokenizer = Tokenizer::new("<?php `ab $world cd`");
-        assert_eq!(get_n_tokens(&mut tokenizer, 6), vec![Ok(Token::OpenTag), Ok(Token::Backquote), Ok(Token::ConstantEncapsedString("ab ".into())),
-                Ok(Token::Variable("world".into())), Ok(Token::ConstantEncapsedString(" cd".into())), Ok(Token::Backquote),
-        ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 6),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::Backquote),
+                        Ok(Token::ConstantEncapsedString("ab ".into())),
+                        Ok(Token::Variable("world".into())),
+                        Ok(Token::ConstantEncapsedString(" cd".into())),
+                        Ok(Token::Backquote)]);
     }
 
     #[test]
     fn heredoc() {
         let mut tokenizer = Tokenizer::new("<?php <<<EOT\ntest\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("test".into())), Ok(Token::HereDocEnd) ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 4),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::HereDocStart),
+                        Ok(Token::ConstantEncapsedString("test".into())),
+                        Ok(Token::HereDocEnd)]);
         let mut tokenizer = Tokenizer::new("<?php <<<\"EOT\"\nte\\tst\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 4), vec![Ok(Token::OpenTag), Ok(Token::HereDocStart), Ok(Token::ConstantEncapsedString("te\tst".into())), Ok(Token::HereDocEnd) ]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 4),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::HereDocStart),
+                        Ok(Token::ConstantEncapsedString("te\tst".into())),
+                        Ok(Token::HereDocEnd)]);
     }
 
     #[test]
     fn nowdoc() {
         let mut tokenizer = Tokenizer::new("<?php <<<'EOT'\nte\\tst\nEOT;\n");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("te\\tst".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::ConstantEncapsedString("te\\tst".into()))]);
     }
 
     #[test]
     fn single_line_comment() {
         let mut tokenizer = Tokenizer::new("<?php //test");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
         let mut tokenizer = Tokenizer::new("<?php //test\n$a");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Comment("test".into()))]);
     }
 
     #[test]
     fn block_comment() {
         let mut tokenizer = Tokenizer::new("<?php /* test\ntest2 */bb");
-        assert_eq!(get_n_tokens(&mut tokenizer, 2), vec![Ok(Token::OpenTag), Ok(Token::Comment(" test\ntest2 ".into()))]);
+        assert_eq!(get_n_tokens(&mut tokenizer, 2),
+                   vec![Ok(Token::OpenTag), Ok(Token::Comment(" test\ntest2 ".into()))]);
     }
 
     #[test]

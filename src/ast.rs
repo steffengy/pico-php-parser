@@ -25,11 +25,19 @@ pub struct Path {
 
 impl Path {
     pub fn identifier(absolute: bool, name: RcStr) -> Path {
-        Path { namespace: None, identifier: name, is_absolute: absolute }
+        Path {
+            namespace: None,
+            identifier: name,
+            is_absolute: absolute,
+        }
     }
 
     pub fn ns_identifier(absolute: bool, namespace: RcStr, name: RcStr) -> Path {
-        Path { namespace: Some(namespace), identifier: name, is_absolute: absolute }
+        Path {
+            namespace: Some(namespace),
+            identifier: name,
+            is_absolute: absolute,
+        }
     }
 }
 
@@ -88,7 +96,7 @@ pub enum Visibility {
     None,
     Public,
     Private,
-    Protected
+    Protected,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

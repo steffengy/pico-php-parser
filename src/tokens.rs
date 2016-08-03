@@ -21,7 +21,7 @@ impl Span {
         Span {
             start: 0,
             end: 0,
-            doc_comment: None
+            doc_comment: None,
         }
     }
 }
@@ -37,12 +37,14 @@ impl SyntaxError {
     pub fn span(&self) -> Span {
         match *self {
             SyntaxError::None => unimplemented!(),
-            SyntaxError::Unterminated(_, ref span) | SyntaxError::UnknownCharacter(ref span) => span.clone(),
+            SyntaxError::Unterminated(_, ref span) |
+            SyntaxError::UnknownCharacter(ref span) => span.clone(),
         }
     }
 }
 
-#[allow(dead_code)] //TODO: remove some day
+#[allow(dead_code)]
+// TODO: remove some day
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     End,

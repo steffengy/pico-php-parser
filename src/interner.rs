@@ -1,4 +1,4 @@
-///! a very simple string interner
+/// ! a very simple string interner
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -32,9 +32,7 @@ pub struct Interner {
 
 impl Interner {
     pub fn new() -> Interner {
-        Interner {
-            strs: HashMap::default(),
-        }
+        Interner { strs: HashMap::default() }
     }
 
     /// checks if a string is already cached in an owned form, reeuse it or
