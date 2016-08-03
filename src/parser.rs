@@ -523,8 +523,8 @@ impl Parser {
         }
 
         let old_pos = self.pos;
-        let (mut var_expr, requires_appendix) = if let Some((var_expr, requires_appendix)) = base_item { 
-            (var_expr, requires_appendix) 
+        let (mut var_expr, requires_appendix) = if let Some((var_expr, requires_appendix)) = base_item {
+            (var_expr, requires_appendix)
         } else {
             match parse_const_scoped(self, simple_only) {
                 Ok((cls, prop, span)) => (Expr(Expr_::StaticMember(Box::new(cls), vec![prop]), span), false),
@@ -832,7 +832,7 @@ impl Parser {
                     return Ok(Expr(Expr_::New(Box::new(x), args), span));
                 }
             }
-        // TODO: anonymous class
+            // TODO: anonymous class
         });
         if_lookahead!(self, Token::Clone, token, {
             return Ok(Expr(Expr_::Clone(Box::new(try!(self.parse_expression(Precedence::None)))), token.1));
@@ -1016,7 +1016,7 @@ impl Parser {
                 }
                 let old_pos = self.pos;
                 if_lookahead!(self, Token::NsSeparator, _tok, {
-            // lookahead to ensure it's followed by string
+                    // lookahead to ensure it's followed by string
                     if_lookahead!(self, Token::String(_), _tok, {
                         self.advance(-1); // we want to use the string in the next iteration
                         continue;
@@ -1362,12 +1362,12 @@ impl Parser {
             if_lookahead_expect!(self, Token::CurlyBracesClose, Token::CurlyBracesClose, _tok, (), if let Some(err) = stmts_err {
                 return Err(err)
             });
-        // parse catch-clauses
+            // parse catch-clauses
             let mut catch_clauses = vec![];
             loop {
                 if_lookahead!(self, Token::Catch, _tok, {
                     if_lookahead_expect!(self, Token::ParenthesesOpen, Token::ParenthesesOpen);
-        // TODO: support | syntax
+                    // TODO: support | syntax
                     let ty = try!(self.parse_name()).0;
                     let var_binding = if_lookahead_expect!(self, Token::Variable(_), Token::Variable(self.interner.intern("")), tok, match tok.0 {
                         Token::Variable(varname) => varname,
@@ -1382,7 +1382,7 @@ impl Parser {
                     catch_clauses.push(CatchClause { ty: ty, var: var_binding, block: Block(block) });
                 }, break);
             }
-        // parse finally clause (optional)
+            // parse finally clause (optional)
             let finally_clause = if_lookahead!(self, Token::Finally, _tok, {
                 if_lookahead_expect!(self, Token::CurlyBracesOpen, Token::CurlyBracesOpen);
                 let (fbody, stmts_err) = self.parse_inner_statement_list();
@@ -1463,7 +1463,7 @@ impl Parser {
                     cases.push(SwitchCase { default: is_default, conds: conds.split_off(0), block: Block(body) });
                 }
             }
-        // add conds with empty bodys too
+            // add conds with empty bodys too
             for cond in conds.into_iter() {
                 cases.push(SwitchCase { default: false, conds: vec![cond], block: Block(vec![]) })
             }
@@ -1575,7 +1575,7 @@ impl Parser {
                     self.advance(-1);
                 }
                 if let Some(ret) = ret {
-        // check if the statement is properly terminated
+                    // check if the statement is properly terminated
                     if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon);
                     let span = mk_span(span.start, self.tokens[self.pos-1].1.end);
                     return Ok(Stmt(ret, span));
@@ -1652,7 +1652,7 @@ impl Parser {
         if !is_var {
             if_lookahead!(self, Token::Use, _tok, {
                 let names = try!(self.parse_name_list()).into_iter().map(|x| x.0).collect();
-            // trait_adaptions
+                // trait_adaptions
                 if_lookahead!(self, Token::SemiColon, _tok, {
                     members.push(Member::TraitUse(names, vec![]));
                     return Ok(members);
@@ -1700,7 +1700,7 @@ impl Parser {
                     _ => unreachable!(),
                 };
                 members.push(Member::Method(modifiers, name, decl));
-            // function declaration does not require semicolon as constants below, so return early
+                // function declaration does not require semicolon as constants below, so return early
                 return Ok(members);
             });
             // constants

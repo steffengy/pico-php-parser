@@ -159,11 +159,11 @@ macro_rules! match_token_alias {
 }
 
 macro_rules! match_token {
-// set state syntax
+    // set state syntax
     ($self_:expr, $token:ident, state=$new_state:ident) => {match_token_alias!($self_, Token::$token.repr(), $token, state=$new_state)};
-// state unchanged
+    // state unchanged
     ($self_:expr, $token:ident) => {match_token_alias!($self_, Token::$token.repr(), $token)};
-// state push
+    // state push
     ($self_:expr, $token:ident, state<-$new_state:ident) => {{
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with(str_repr) {
@@ -174,7 +174,7 @@ macro_rules! match_token {
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
     }};
-// state pop
+    // state pop
     ($self_:expr, $token:ident, state->) => {{
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with(str_repr) {
