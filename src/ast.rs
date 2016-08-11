@@ -232,7 +232,7 @@ pub enum Expr_ {
 
     /// same as if, just will pass the return-value of either expression to the parent
     /// if .1 (then) is None, the value of .0 (condition) will be used
-    /// TODO: this should be desugared into an `If` during post-processing
+    /// this can be desugared into an `If` during post-processing
     TernaryIf(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
 }
 
@@ -281,7 +281,8 @@ pub enum Ty {
 
 /// a builtin (internal) constant, which can be resolved at parse-time
 /// and is an essential part of the language (by design and not by declaration)
-// TODO: use Null, True, False insteadof Path::Identifier("null" ... etc.
+/// null,true,false are not actual language-level constants, we still resolve them
+/// at parse-time since they are very-very common
 #[derive(Clone, Debug, PartialEq)]
 pub enum Const {
     Null,
@@ -296,7 +297,6 @@ pub enum Const {
     MagicDir,
     MagicNamespace,
 }
-
 /// A type and flag describing whether it's nullable
 #[derive(Clone, Debug, PartialEq)]
 pub struct NullableTy(pub Ty, pub bool);

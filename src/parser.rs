@@ -264,6 +264,8 @@ macro_rules! if_lookahead_expect {
     ($self_:expr, $a:pat, $b:expr) => {if_lookahead_expect!($self_, $a, $b, _tok, {})};
 }
 
+/// all functions generally can not be assumed to restore state or position in case of an error
+/// if at any position alternative-probing is done, the code doing it is responsible for restoring the state accordingly
 impl Parser {
     fn parse_unary_expression(&mut self, precedence: Precedence) -> Result<Expr, ParserError> {
         let left = match self.next_token() {
@@ -428,7 +430,7 @@ impl Parser {
             if_lookahead!(self, Token::ParenthesesClose, _token, {
                 return Ok(vec![]);
             });
-        // parse arguments (non_empty_argument_list)
+            // parse arguments (non_empty_argument_list)
             let args = try!(self.parse_expression_list());
 
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, _token, return Ok(args));
@@ -436,7 +438,9 @@ impl Parser {
     }
 
     fn parse_property_name(&mut self) -> Result<Expr, ParserError> {
+        let old_pos = self.pos;
         alt!(self.parse_simple_variable_expr());
+        self.pos = old_pos;
         if_lookahead!(self, Token::String(_), token, {
             return Ok(match token.0 {
                 Token::String(str_) => Expr(Expr_::Path(Path::identifier(false, str_.into())), token.1),
@@ -617,7 +621,7 @@ impl Parser {
 
     fn parse_opt_expression(&mut self, prec: Precedence) -> Result<Option<Expr>, ParserError> {
         match self.parse_expression(prec) {
-            // TODO: maybe check for ParseError(vec![]) ?
+            // TODO: maybe check for ParseError(vec![]) ? maybe allow passing a ending token in, which we can check for?
             Err(_) => Ok(None),
             x => x.map(Some),
         }
@@ -821,7 +825,6 @@ impl Parser {
         // new
         if_lookahead!(self, Token::New, token, {
             match self.parse_class_name_reference() {
-                Err(_) => (),
                 Ok(x) => {
                     let args = if let Some(&TokenSpan(Token::ParenthesesOpen, _)) = self.next_token() {
                         try!(self.parse_argument_list())
@@ -830,7 +833,8 @@ impl Parser {
                     };
                     let span = Span { end: self.tokens[self.pos-1].1.end, ..token.1 };
                     return Ok(Expr(Expr_::New(Box::new(x), args), span));
-                }
+                },
+                Err(x) => return Err(x),
             }
             // TODO: anonymous class
         });
@@ -1110,7 +1114,23 @@ impl Parser {
         // class_name T_PAAMAYIM_NEKUDOTAYIM identifier
         // parse a class_name if we don't find T_PAAMAYIM_NEKUDOTAYIM we just return the class_name
         // (which is luckily handled identically as a name)
-        let name = try!(self.parse_class_name());
+        let name = match try!(self.parse_class_name()) {
+            // resolve some builtin constants at parse-time
+            Expr(Expr_::Path(path), span) => {
+                let mut ret_expr = None;
+                if path.namespace.is_none() {
+                    let constant = match &(path.identifier.borrow() as &str).to_lowercase()[..] {
+                        "true" => Some(Const::True),
+                        "false" => Some(Const::False),
+                        "null" => Some(Const::Null),
+                        _ => None,
+                    };
+                    ret_expr = constant.map(Expr_::Constant);
+                };
+                Expr(ret_expr.unwrap_or(Expr_::Path(path)), span)
+            },
+            expr => expr,
+        };
         if_lookahead!(self, Token::ScopeOp, _tok, {
             match self.parse_identifier_as_expr() {
                 Err(x) => return Err(x),
@@ -1270,7 +1290,6 @@ impl Parser {
                     ret.1.end = if_lookahead_expect!(self, Token::HereDocEnd, Token::HereDocEnd, token, token.1.end);
                     return Ok(ret);
                 },
-                // TODO  |   T_START_HEREDOC encaps_list T_END_HEREDOC { $$ = $2; }
                 _ => {
                     self.advance(-1);
                     // TODO: check which error of dereferencable_scalar, parse_constant goes deeper
@@ -1842,7 +1861,6 @@ impl Parser {
         let ((interner, ext_state), tokens) = {
             let mut tokenizer = Tokenizer::new(s);
             let mut tokens = vec![];
-            // TODO: error & state handling
             loop {
                 match tokenizer.next_token() {
                     Ok(TokenSpan(Token::End, _)) => break,
