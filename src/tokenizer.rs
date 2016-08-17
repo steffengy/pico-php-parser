@@ -126,6 +126,18 @@ impl TokenizerState {
     }
 }
 
+/// Check if a string staarts with a token (case-insensitive)
+trait StrStartsWithCI {
+    fn starts_with_ci(&self, s: &str) -> bool;
+}
+
+impl<'a> StrStartsWithCI for &'a str {
+    #[inline]
+    fn starts_with_ci(&self, s: &str) -> bool {
+        self.chars().take(s.len()).collect::<String>() == s.to_lowercase()
+    }
+}
+
 macro_rules! state_helper {
     (push, $self_:expr, $new_state:ident) => ({
         let old_state = mem::replace(&mut $self_.state.state, State::$new_state);
@@ -138,7 +150,7 @@ macro_rules! match_token_alias {
     // set state syntax
     ($self_:expr, $alias:expr, $token:ident, state=$new_state:ident) => {{
         let str_repr = $alias;
-        if $self_.input().starts_with(str_repr) {
+        if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
             $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
@@ -149,7 +161,7 @@ macro_rules! match_token_alias {
     // state unchanged
     ($self_:expr, $alias:expr, $token:ident) => {{
         let str_repr = $alias;
-        if $self_.input().starts_with(str_repr) {
+        if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
             $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
@@ -166,7 +178,7 @@ macro_rules! match_token {
     // state push
     ($self_:expr, $token:ident, state<-$new_state:ident) => {{
         let str_repr = Token::$token.repr();
-        if $self_.input().starts_with(str_repr) {
+        if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
             $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
@@ -177,7 +189,7 @@ macro_rules! match_token {
     // state pop
     ($self_:expr, $token:ident, state->) => {{
         let str_repr = Token::$token.repr();
-        if $self_.input().starts_with(str_repr) {
+        if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
             $self_.advance(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
@@ -1017,7 +1029,7 @@ impl<'a> Tokenizer<'a> {
                 let is_php_tag = if is_php_tag && self.short_tags {
                     true
                 } else {
-                    input.starts_with("<?=") || input.starts_with("<?php")
+                    input.starts_with("<?=") || input.starts_with_ci("<?php")
                 };
                 if is_php_tag || next_pos == input.len() {
                     end_pos += next_pos;
@@ -1096,13 +1108,13 @@ impl<'a> Tokenizer<'a> {
         ret_token!(match_token!(self, Return));
         ret_token!({
             let keyword = "yield";
-            if self.input().starts_with(keyword) {
+            if self.input().starts_with_ci(keyword) {
                 let old_pos = self.input_pos();
                 self.advance(keyword.len());
                 // yield_from submatch
                 self.whitespace();
                 let keyword = "from";
-                if self.input().starts_with(keyword) {
+                if self.input().starts_with_ci(keyword) {
                     self.advance(keyword.len());
                     let span = mk_span(old_pos, self.input_pos());
                     Ok(TokenSpan(Token::YieldFrom, span))

@@ -40,9 +40,12 @@ fn parse_expr_op() {
 
 #[test]
 fn parse_expr_logical() {
-    assert_eq!(process_expr(r#"$a||$b"#), enb!(0,6, Expr_::BinaryOp(Op::Or, eb!(0,2, Expr_::Variable("a".into())), eb!(4,6, Expr_::Variable("b".into())))));
-    assert_eq!(process_expr(r#"$a&&true"#), enb!(0,8, Expr_::BinaryOp(Op::And, eb!(0,2, Expr_::Variable("a".into())), eb!(4,8, constant!(true)))));
-    assert_eq!(process_expr(r#"!$a"#), enb!(0,3, Expr_::UnaryOp(UnaryOp::Not, eb!(1,3, Expr_::Variable("a".into())))));
+    assert_eq!(process_expr("$a||$b"), enb!(0,6, Expr_::BinaryOp(Op::Or, eb!(0,2, Expr_::Variable("a".into())), eb!(4,6, Expr_::Variable("b".into())))));
+    assert_eq!(process_expr("$a&&true"), enb!(0,8, Expr_::BinaryOp(Op::And, eb!(0,2, Expr_::Variable("a".into())), eb!(4,8, constant!(true)))));
+    assert_eq!(process_expr("!$a"), enb!(0,3, Expr_::UnaryOp(UnaryOp::Not, eb!(1,3, Expr_::Variable("a".into())))));
+    assert_eq!(process_expr("$a?false:true or $b"), enb!(0,19, Expr_::BinaryOp(Op::Or,
+        eb!(0,13, Expr_::TernaryIf(eb!(0,2, Expr_::Variable("a".into())), Some(eb!(3,8, constant!(false))), eb!(9,13, constant!(true)))), eb!(17,19, Expr_::Variable("b".into()))
+    )));
 }
 
 #[test]

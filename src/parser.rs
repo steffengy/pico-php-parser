@@ -1,5 +1,5 @@
 /// ! recursive descedant parser
-/// ! using pratt-parser techniques described in [1] and [2]
+/// ! using precedence-climbing techniques described in [1] and [2]
 /// !
 /// ! grammar based on [3]
 /// !
@@ -120,10 +120,13 @@ enum Associativity {
 #[derive(Copy, Clone)]
 enum Precedence {
     None,
+    LogicalIncOr2,
+    LogicalExcOr2,
+    LogicalAnd2,
     /// e.g. ternary
     Conditional,
     LogicalIncOr1,
-    LogicalAnd,
+    LogicalAnd1,
     BitwiseIncOr,
     BitwiseExcOr,
     BitwiseAnd,
@@ -153,8 +156,11 @@ macro_rules! from_usize {
 }
 from_usize!(None,
             Conditional,
+            LogicalIncOr2,
+            LogicalExcOr2,
+            LogicalAnd2,
             LogicalIncOr1,
-            LogicalAnd,
+            LogicalAnd1,
             BitwiseIncOr,
             BitwiseExcOr,
             BitwiseAnd,
@@ -169,8 +175,11 @@ from_usize!(None,
 impl Token {
     fn precedence(&self) -> Option<Precedence> {
         Some(match *self {
+            Token::LogicalOr => Precedence::LogicalIncOr2,
+            Token::LogicalXor => Precedence::LogicalExcOr2,
+            Token::LogicalAnd => Precedence::LogicalAnd2,
             Token::BoolOr => Precedence::LogicalIncOr1,
-            Token::BoolAnd => Precedence::LogicalAnd,
+            Token::BoolAnd => Precedence::LogicalAnd1,
             Token::BwOr => Precedence::BitwiseIncOr,
             Token::BwXor => Precedence::BitwiseExcOr,
             Token::Ampersand => Precedence::BitwiseAnd,
@@ -191,6 +200,7 @@ impl Token {
 
     fn associativity(&self) -> Associativity {
         match *self {
+            Token::LogicalOr | Token::LogicalXor | Token::LogicalAnd |
             Token::BoolOr | Token::BoolAnd | Token::BwOr | Token::BwXor | Token::Ampersand |
             Token::IsIdentical | Token::IsNotIdentical | Token::IsEqual | Token::IsNotEqual |
             Token::SpaceShip | Token::Lt | Token::Gt | Token::IsSmallerOrEqual |
@@ -313,6 +323,9 @@ impl Parser {
         let (new_precedence, binary_op) = {
             match self.next_token() {
                 Some(x) => (x.0.precedence(), match x.0 {
+                    Token::LogicalOr => Some(Op::Or),
+                    Token::LogicalXor => Some(Op::BitwiseExclOr),
+                    Token::LogicalAnd => Some(Op::And),
                     Token::BoolOr => Some(Op::Or),
                     Token::BoolAnd => Some(Op::And),
                     Token::BwOr => Some(Op::BitwiseInclOr),
