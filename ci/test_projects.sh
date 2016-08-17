@@ -8,6 +8,7 @@ useradd -ms /bin/bash non_root
 # Laravel tests
 if [ "$TEST_PROJECT" == "laravel" ]; then
     su -l non_root <<EOSU
+    set -e
     git clone https://github.com/laravel/framework --depth=1
     pushd framework
     composer install
@@ -23,6 +24,7 @@ fi
 # YII2 tests
 if [ "$TEST_PROJECT" == "yii2" ]; then
     su -l non_root <<EOSU
+    set -e
     git clone https://github.com/yiisoft/yii2 --depth=1
     pushd yii2
     composer install
