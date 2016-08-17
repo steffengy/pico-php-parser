@@ -19,3 +19,18 @@ if [ "$TEST_PROJECT" == "laravel" ]; then
     popd
 EOSU
 fi
+
+# YII2 tests
+if [ "$TEST_PROJECT" == "yii2" ]; then
+    su -l non_root <<EOSU
+    git clone https://github.com/yiisoft/yii2 --depth=1
+    pushd yii2
+    composer install
+    ./vendor/bin/phpunit --exclude-group mssql,oci,wincache,xcache,zenddata,cubrid
+    popd
+    /ci/tester/target/debug/pico-php-tester parse yii2
+    pushd yii2
+    ./vendor/bin/phpunit --exclude-group mssql,oci,wincache,xcache,zenddata,cubrid
+    popd
+EOSU
+fi

@@ -13,6 +13,11 @@ matrix:
         - TEST_PROJECT=laravel
       sudo: required
       dist: trusty
+    - rust: stable
+      env:
+        - TEST_PROJECT=yii2
+      sudo: required
+      dist: trusty
     - rust: beta
     - rust: nightly
 
