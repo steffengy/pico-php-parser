@@ -669,6 +669,11 @@ impl Parser {
         if_lookahead!(self, Token::Ampersand, _tok, true, false)
     }
 
+    #[inline]
+    fn parse_is_variadic(&mut self) -> bool {
+        if_lookahead!(self, Token::Ellipsis, _tok, true, false)
+    }
+
     fn parse_parameter_list(&mut self) -> (Vec<ParamDefinition>, Option<ParserError>) {
         let mut params = vec![];
         loop {
@@ -684,7 +689,7 @@ impl Parser {
                 }
             }));
             let is_ref = self.parse_is_ref();
-            // todo: variadic
+            let is_variadic = self.parse_is_variadic();
             // parameter name
             let param_name = if_lookahead!(self, Token::Variable(_), token, {
                 match token.0 {
@@ -702,6 +707,7 @@ impl Parser {
             params.push(ParamDefinition {
                 name: param_name,
                 as_ref: is_ref,
+                variadic: is_variadic,
                 ty: ty,
                 default: default,
             });

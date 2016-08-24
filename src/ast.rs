@@ -321,6 +321,7 @@ pub enum TraitUse {
 pub struct ParamDefinition {
     pub name: RcStr,
     pub as_ref: bool,
+    pub variadic: bool,
     /// The type of the parameter
     pub ty: Option<Ty>,
     /// The default value for the parameter

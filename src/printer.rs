@@ -245,6 +245,9 @@ impl<W: Write> PrettyPrinter<W> {
             if param.as_ref {
                 try!(self.write("&"));
             }
+            if param.variadic {
+                try!(self.write("..."));
+            }
             try!(self.write("$"));
             try!(self.write(param.name.borrow()));
             if let Some(ref default) = param.default {

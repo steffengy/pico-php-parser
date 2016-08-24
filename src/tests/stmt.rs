@@ -264,22 +264,26 @@ fn parse_stmt_func_decl() {
         body: Some(Block(vec![ senb!(19,23, Expr_::Call(eb!(19,21, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: true, })
     )));
     assert_eq!(process_stmt("function test($a) { ok(); }"), st!(0,27, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None }],
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, variadic: false, ty: None, default: None }],
         body: Some(Block(vec![ senb!(20,24, Expr_::Call(eb!(20,22, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
     assert_eq!(process_stmt("function test($a, $b) { ok(); }"), st!(0,31, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
         params: vec![
-            ParamDefinition { name: "a".into(), as_ref: false, ty: None, default: None },
-            ParamDefinition { name: "b".into(), as_ref: false, ty: None, default: None }
+            ParamDefinition { name: "a".into(), as_ref: false, variadic: false, ty: None, default: None },
+            ParamDefinition { name: "b".into(), as_ref: false, variadic: false, ty: None, default: None }
         ],
         body: Some(Block(vec![ senb!(24,28, Expr_::Call(eb!(24,26, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
+    )));
+    assert_eq!(process_stmt("function test(...$a) { ok(); }"), st!(0,30, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
+        params: vec![ParamDefinition { name: "a".into(), as_ref: false, variadic: true, ty: None, default: None }],
+        body: Some(Block(vec![ senb!(23,27, Expr_::Call(eb!(23,25, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
 
 #[test]
 fn parse_func_decl_typehint() {
     assert_eq!(process_stmt("function test(Test $a) { ok(); }"), st!(0,32, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl {
-        params: vec![ ParamDefinition { name: "a".into(), as_ref: false, ty: Some(Ty::Object(Some(Path::identifier(false, "Test".into())))), default: None } ],
+        params: vec![ ParamDefinition { name: "a".into(), as_ref: false, variadic: false, ty: Some(Ty::Object(Some(Path::identifier(false, "Test".into())))), default: None } ],
         body: Some(Block(vec![ senb!(25,29, Expr_::Call(eb!(25,27, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
     )));
 }
@@ -333,7 +337,7 @@ fn parse_class_methods() {
         st!(0,90, Stmt_::Decl(Decl::Class(ClassDecl {
             cmod: ClassModifiers::none(), name: "Test".into(), base_class: None, implements: vec![],
             members: vec![ Member::Method(MemberModifiers::new(&[MemberModifier::Public]), "__construct".into(), FunctionDecl {
-                params: vec![ParamDefinition { name: "param1".into(), as_ref: false, ty: Some(Ty::Array), default: Some(enb!(57,59, Expr_::Array(vec![]))) }],
+                params: vec![ParamDefinition { name: "param1".into(), as_ref: false, variadic: false, ty: Some(Ty::Array), default: Some(enb!(57,59, Expr_::Array(vec![]))) }],
                 body: Some(Block(vec![ senb!(63,85, Expr_::Assign(eb!(63,75, Expr_::ObjMember(eb!(63,68, Expr_::Variable("this".into())), vec![
                     enb!(70,75, Expr_::Path(Path::identifier(false, "param".into()))) ])), eb!(78,85, Expr_::Variable("param1".into()))))
                 ])), usev: vec![], ret_ref: false,
