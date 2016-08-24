@@ -9,7 +9,7 @@ useradd -ms /bin/bash non_root
 if [ "$TEST_PROJECT" == "laravel" ]; then
     su -l non_root <<EOSU
     set -e
-    git clone https://github.com/laravel/framework --depth=1
+    git clone https://github.com/laravel/framework -b 5.2 --depth=1
     pushd framework
     composer install
     ./vendor/bin/phpunit
