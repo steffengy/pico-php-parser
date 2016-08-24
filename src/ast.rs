@@ -240,6 +240,8 @@ pub enum Expr_ {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt_ {
+    /// an empty statement such as simply ";"
+    None,
     Block(Block),
     Decl(Decl),
     Use(Vec<UseClause>),

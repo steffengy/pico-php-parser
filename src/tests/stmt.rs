@@ -9,7 +9,7 @@ fn process_stmt(input: &str) -> Stmt {
 
 #[test]
 fn parse_stmt_heredoc() {
-    assert_eq!(process_stmt("<<<EOT\ntest\nEOT;\n;"), senb!(0,17, Expr_::String("test".into())));
+    assert_eq!(process_stmt("<<<EOT\ntest\nEOT;\n"), senb!(0,15, Expr_::String("test".into())));
 }
 
 #[test]
@@ -223,6 +223,7 @@ fn parse_stmt_use() {
         Path::ns_identifier(false, "Ab\\Cd\\Ef\\Gh".into(), "Ij".into()),
         Some("Ga".into()))
     ])));
+    assert_eq!(process_stmt(r#"use \FQNS\Test;"#), st!(0,15, Stmt_::Use(vec![ UseClause::QualifiedName(Path::ns_identifier(true, "FQNS".into(), "Test".into()), None) ])));
 }
 
 #[test]

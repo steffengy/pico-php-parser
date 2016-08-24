@@ -1399,6 +1399,11 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Stmt, ParserError> {
         let mut deepest_err: Option<(usize, ParserError)> = None;
 
+        // parse an empty statement
+        if_lookahead!(self, Token::SemiColon, token, {
+            return Ok(Stmt(Stmt_::None, token.1));
+        });
+
         // parse a block: { statements }
         if_lookahead!(self, Token::CurlyBracesOpen, token, {
             let (block, stmts_err) = self.parse_inner_statement_list();
@@ -1810,7 +1815,9 @@ impl Parser {
         if_lookahead!(self, Token::Use, token, {
             let mut clauses = vec![];
             loop {
-                let ns_name = try!(self.parse_namespace_name()).0;
+                let is_fqdn = if_lookahead!(self, Token::NsSeparator, _tok, true, false);
+                let mut ns_name = try!(self.parse_namespace_name()).0;
+                ns_name.is_absolute = is_fqdn;
                 let alias = if_lookahead!(self, Token::As, _tok, {
                     if_lookahead_expect!(self, Token::String(_), Token::String(self.interner.intern("")), token, {
                         match token.0 {

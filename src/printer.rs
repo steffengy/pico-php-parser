@@ -296,6 +296,9 @@ impl<W: Write> PrettyPrinter<W> {
 
     fn print_statement(&mut self, stmt: &Stmt) -> fmt::Result {
         match stmt.0 {
+            Stmt_::None => {
+                self.writeln(";")
+            }
             Stmt_::Block(ref block) => {
                 try!(self.writeln("{\n"));
                 self.indentation += 1;
@@ -355,7 +358,7 @@ impl<W: Write> PrettyPrinter<W> {
                 self.print_block(bl)
             }
             Stmt_::DoWhile(ref bl, ref cond) => {
-                try!(self.write_indented("do ("));
+                try!(self.write_indented("do "));
                 try!(self.print_block(bl));
                 try!(self.write("while ("));
                 try!(self.print_expression(cond));
@@ -733,10 +736,10 @@ impl fmt::Display for MemberModifiers {
             try!(write!(f, "protected "));
         }
         if self.has(MemberModifier::Private) {
-            try!(write!(f, "private"));
+            try!(write!(f, "private "));
         }
         if self.has(MemberModifier::Static) {
-            try!(write!(f, "static"));
+            try!(write!(f, "static "));
         }
         if self.has(MemberModifier::Abstract) {
             try!(write!(f, "abstract "));
