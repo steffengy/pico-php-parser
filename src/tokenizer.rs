@@ -1393,6 +1393,11 @@ mod tests {
 
     #[test]
     fn dq_string() {
+        let mut tokenizer = Tokenizer::new("<?php \"\"");
+        assert_eq!(get_n_tokens(&mut tokenizer, 3),
+                   vec![Ok(Token::OpenTag),
+                        Ok(Token::DoubleQuote),
+                        Ok(Token::DoubleQuote)]);
         let mut tokenizer = Tokenizer::new("<?php \"testhallo\\nwelt\"");
         assert_eq!(get_n_tokens(&mut tokenizer, 4),
                    vec![Ok(Token::OpenTag),

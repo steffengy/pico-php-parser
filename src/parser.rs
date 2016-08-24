@@ -1309,6 +1309,10 @@ impl Parser {
                 Token::MagicClass => Expr_::Constant(Const::MagicClass),
                 // '"' encaps_list '"'     { $$ = $2; }
                 Token::DoubleQuote => {
+                    if_lookahead!(self, Token::DoubleQuote, token, {
+                        let span = mk_span(x.1.start, token.1.end);
+                        return Ok(Expr(Expr_::String(self.interner.intern("")), span));
+                    });
                     let mut ret = try!(self.parse_encaps_list());
                     ret.1.start = x.1.start;
                     ret.1.end = if_lookahead_expect!(self, Token::DoubleQuote, Token::DoubleQuote, token, token.1.end);

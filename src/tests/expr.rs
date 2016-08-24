@@ -59,6 +59,7 @@ fn parse_expr_parens() {
 #[test]
 fn parse_expr_string() {
     // TODO: fix line numbers of fragments (complex strings containing variables, etc.) (not tested yet)
+    assert_eq!(process_expr(r#""""#), enb!(0, 2, Expr_::String("".into())));
     assert_eq!(process_expr(r#""t\nest\tsss\"os\"haha""#), enb!(0, 23, Expr_::String("t\nest\tsss\"os\"haha".into())));
     assert_eq!(process_expr(r#""\xe7\x9a\x84""#), enb!(0, 14, Expr_::String("的".into())));
     //assert_eq!(process_expr(r#""a\142\143d""#), Expr_::String("abcd".into()));
