@@ -339,6 +339,7 @@ pub struct FunctionDecl {
     /// the boolean indicates whether to bind by-reference (true)
     pub usev: Vec<(bool, RcStr)>,
     pub ret_ref: bool,
+    pub ret_type: Option<RcStr>
 }
 
 #[derive(Clone, Debug, PartialEq)]
