@@ -152,7 +152,7 @@ macro_rules! match_token_alias {
         let str_repr = $alias;
         if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance(str_repr.len());
+            $self_.advance_bytes(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             $self_.state.state = State::$new_state;
             Ok(TokenSpan(Token::$token, span))
@@ -163,7 +163,7 @@ macro_rules! match_token_alias {
         let str_repr = $alias;
         if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance(str_repr.len());
+            $self_.advance_bytes(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
@@ -180,7 +180,7 @@ macro_rules! match_token {
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance(str_repr.len());
+            $self_.advance_bytes(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             state_helper!(push, $self_, $new_state);
             Ok(TokenSpan(Token::$token, span))
@@ -191,7 +191,7 @@ macro_rules! match_token {
         let str_repr = Token::$token.repr();
         if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
-            $self_.advance(str_repr.len());
+            $self_.advance_bytes(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
             state_helper!(pop, $self_);
             Ok(TokenSpan(Token::$token, span))
@@ -238,13 +238,18 @@ impl<'a> Tokenizer<'a> {
     /// advances by n-positions where a position is a char-index
     /// this returns a substring of the skipped part (old[..n])
     #[inline]
-    fn advance(&mut self, n: usize) -> &'a str {
+    fn advance_chars(&mut self, n: usize) -> &'a str {
         let end_byte_pos = match self.input().char_indices().nth(n) {
             Some((byte_pos, _)) => byte_pos,
             None => self.input().len(),
         };
-        let ret = &self.input()[..end_byte_pos];
-        self.state.src_pos += end_byte_pos;
+        self.advance_bytes(end_byte_pos)
+    }
+
+    #[inline]
+    fn advance_bytes(&mut self, n: usize) -> &'a str {
+        let ret = &self.input()[..n];
+        self.state.src_pos += n;
         ret
     }
 
@@ -272,10 +277,10 @@ impl<'a> Tokenizer<'a> {
         while !self.input().is_empty() {
             match self.input().chars().nth(0).unwrap() {
                 ' ' | '\t' | '\r' => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                 }
                 '\n' => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     self.state.next_line();
                 }
                 _ => break,
@@ -288,7 +293,7 @@ impl<'a> Tokenizer<'a> {
         while !self.input().is_empty() {
             match self.input().chars().nth(0).unwrap() {
                 ' ' | '\t' => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                 }
                 _ => break,
             }
@@ -304,7 +309,7 @@ impl<'a> Tokenizer<'a> {
         } else {
             return false;
         };
-        self.advance(amount);
+        self.advance_bytes(amount);
         self.state.next_line();
         true
     }
@@ -331,10 +336,10 @@ impl<'a> Tokenizer<'a> {
         let end_pos = match end_pos {
             Some(0) => return None,
             Some(x) => x,
-            None => self.input().len(),
+            None => self.input().chars().count(),
         };
         let old_pos = self.input_pos();
-        let ret = self.advance(end_pos);
+        let ret = self.advance_chars(end_pos);
         Some((ret, mk_span(old_pos, old_pos + end_pos)))
     }
 
@@ -370,7 +375,7 @@ impl<'a> Tokenizer<'a> {
             '@' => Token::Silence,
             _ => return Err(SyntaxError::None),
         };
-        self.advance(1);
+        self.advance_chars(1);
         Ok(TokenSpan(tok, mk_span(self.input_pos() - 1, self.input_pos())))
     }
 
@@ -385,7 +390,7 @@ impl<'a> Tokenizer<'a> {
             Some(end_pos) => end_pos,
         };
         let old_pos = self.input_pos();
-        let str_ = self.advance(end_pos).to_owned();
+        let str_ = self.advance_chars(end_pos).to_owned();
         if !self.input().starts_with('.') {
             {
                 let span = mk_span(old_pos, self.input_pos());
@@ -401,10 +406,10 @@ impl<'a> Tokenizer<'a> {
             self.state.src_pos = old_pos;
             return Err(SyntaxError::None);
         }
-        let mut str_ = str_ + self.advance(1);
+        let mut str_ = str_ + self.advance_chars(1);
         // at this point we either matched "long." or just "."
         let end_pos2 = match self.input().chars().position(|x| x < '0' || x > '9') {
-            None => self.input().len(),
+            None => self.input().chars().count(),
             Some(0) if str_.len() == 1 => {
                 self.state.src_pos = old_pos;
                 return Err(SyntaxError::None);
@@ -412,7 +417,7 @@ impl<'a> Tokenizer<'a> {
             Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos(), end_pos);
-        str_.push_str(self.advance(end_pos2));
+        str_.push_str(self.advance_chars(end_pos2));
         Ok(TokenSpan(Token::Double(f64::from_str(&str_).unwrap()), span))
     }
 
@@ -421,17 +426,17 @@ impl<'a> Tokenizer<'a> {
         if self.input().len() < 3 || !self.input().starts_with("0x") {
             return Err(SyntaxError::None);
         }
-        self.advance(2);
+        self.advance_bytes(2);
         let end_pos = match self.input().chars().position(|x| match x {
             'a'...'f' | 'A'...'F' | '0'...'9' => false,
             _ => true,
         }) {
-            None => self.input().len(),
+            None => self.input().chars().count(),
             Some(0) => return Err(SyntaxError::None),
             Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos() - 2, end_pos);
-        let str_ = self.advance(end_pos);
+        let str_ = self.advance_chars(end_pos);
         Ok(TokenSpan(Token::Int(i64::from_str_radix(str_, 16).unwrap()), span))
     }
 
@@ -440,14 +445,14 @@ impl<'a> Tokenizer<'a> {
         if self.input().len() < 3 || !self.input().starts_with("0b") {
             return Err(SyntaxError::None);
         }
-        self.advance(2);
+        self.advance_bytes(2);
         let end_pos = match self.input().chars().position(|x| x != '0' && x != '1') {
-            None => self.input().len(),
+            None => self.input().chars().count(),
             Some(0) => return Err(SyntaxError::None),
             Some(end_pos) => end_pos,
         };
         let span = mk_span(self.input_pos() - 2, end_pos);
-        let str_ = self.advance(end_pos);
+        let str_ = self.advance_chars(end_pos);
         Ok(TokenSpan(Token::Int(i64::from_str_radix(str_, 2).unwrap()), span))
     }
 
@@ -457,7 +462,7 @@ impl<'a> Tokenizer<'a> {
             return Err(SyntaxError::None);
         }
         let bak_pos = self.input_pos();
-        self.advance(1);
+        self.advance_bytes(1);
         match self._label().map(|(x, span)| (self.interner.intern(x), span)) {
             Some((name, mut span)) => {
                 span.start = bak_pos as u32;
@@ -500,7 +505,7 @@ impl<'a> Tokenizer<'a> {
                     let end_pos = self.input().char_indices().nth(end_idx + 1).unwrap().0;
                     let byte = u8::from_str_radix(&self.input()[start_pos..end_pos], 16).unwrap();
                     bytes.push(byte);
-                    self.advance(1 + end_idx);
+                    self.advance_chars(1 + end_idx);
                     return Ok(());
                 }
             }
@@ -514,7 +519,7 @@ impl<'a> Tokenizer<'a> {
             }
             _ => return Err(SyntaxError::Unterminated("string escape sequence", mk_span(self.input_pos(), self.input_pos() + 1))),
         };
-        self.advance(2);
+        self.advance_chars(2);
         if let Some(chr) = chr {
             bytes.push(chr);
         }
@@ -552,9 +557,9 @@ impl<'a> Tokenizer<'a> {
         // backup the whole state, since line counting needs resetting too
         let bak_state = self.state.clone();
         if self.input().starts_with("b'") {
-            self.advance(2);
+            self.advance_bytes(2);
         } else if self.input().starts_with('\'') {
-            self.advance(1);
+            self.advance_bytes(1);
         } else {
             return Err(SyntaxError::None);
         }
@@ -566,18 +571,18 @@ impl<'a> Tokenizer<'a> {
             let end_pos =
                 match self.input().chars().position(|x| x == '\\' || x == '\'' || x == '\n') {
                     Some(end_pos) => end_pos,
-                    None => self.input().len(),
+                    None => self.input().chars().count(),
                 };
-            bytes.extend(self.advance(end_pos).as_bytes());
+            bytes.extend(self.advance_chars(end_pos).as_bytes());
             match self.input().chars().nth(0) {
                 Some('\n') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     self.state.next_line();
                     bytes.push(b'\n');
                 }
                 Some('\\') => try!(self.str_escape(&mut bytes, true)),
                 Some('\'') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     break;
                 }
                 _ => {
@@ -596,7 +601,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn str_variable(&mut self, bytes: &mut Vec<u8>, parts: &mut Vec<TokenSpan>) {
-        self.advance(1);
+        self.advance_bytes(1);
         // T_DOLLAR_OPEN_CURLY_BRACES ${ ... } syntax (simple = DollarCurlyBraces, complex = str_block)
         if self.input().starts_with('{') {
             let pos = self.input_pos() - 1;
@@ -626,7 +631,7 @@ impl<'a> Tokenizer<'a> {
             // match object access (only $var->label supported in PHP)
             else if self.input().starts_with("->") {
                 let bak_pos = self.input_pos();
-                self.advance(2);
+                self.advance_bytes(2);
                 if let Some((property, span)) = self._label().map(|(x, span)| (self.interner.intern(x), span)) {
                     tmp_parts.push(TokenSpan(Token::ObjectOp, mk_span(bak_pos, bak_pos+1)));
                     tmp_parts.push(TokenSpan(Token::String(property), mk_span(span.start, span.end)));
@@ -655,7 +660,7 @@ impl<'a> Tokenizer<'a> {
                  bytes: &mut Vec<u8>,
                  parts: &mut Vec<TokenSpan>,
                  require_dollar: bool) {
-        self.advance(1);
+        self.advance_bytes(1);
         if self.input().starts_with('$') || !require_dollar {
             let bak_state = self.state.clone();
             // temporary state transition to use the same instance to match
@@ -694,9 +699,9 @@ impl<'a> Tokenizer<'a> {
         }
         let bak_state_str = self.state.clone();
         if self.input().starts_with("b\"") {
-            self.advance(2);
+            self.advance_bytes(2);
         } else if self.input().starts_with('"') {
-            self.advance(1);
+            self.advance_bytes(1);
         } else {
             return Err(SyntaxError::None);
         }
@@ -710,19 +715,19 @@ impl<'a> Tokenizer<'a> {
                 .chars()
                 .position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
-                None => self.input().len() - 1,
+                None => self.input().chars().count() - 1,
             };
-            bytes.extend(self.advance(end_pos).as_bytes());
+            bytes.extend(self.advance_chars(end_pos).as_bytes());
 
             match self.input().chars().nth(0) {
                 Some('\n') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     self.state.next_line();
                     bytes.push(b'\n');
                 }
                 Some('\\') => try!(self.str_escape(&mut bytes, false)),
                 Some('"') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     break;
                 }
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
@@ -750,7 +755,7 @@ impl<'a> Tokenizer<'a> {
         }
         let bak_state_str = if self.input().starts_with('`') {
             let bak_state = self.state.clone();
-            self.advance(1);
+            self.advance_bytes(1);
             bak_state
         } else {
             return Err(SyntaxError::None);
@@ -762,18 +767,18 @@ impl<'a> Tokenizer<'a> {
                 .chars()
                 .position(|x| x == '\\' || x == '"' || x == '$' || x == '\n' || x == '{') {
                 Some(end_pos) => end_pos,
-                None => self.input().len() - 1,
+                None => self.input().chars().count() - 1,
             };
-            bytes.extend(self.advance(end_pos).as_bytes());
+            bytes.extend(self.advance_chars(end_pos).as_bytes());
 
             match self.input().chars().nth(0) {
                 Some('\n') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     self.state.next_line();
                     bytes.push(b'\n');
                 }
                 Some('`') => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     break;
                 }
                 Some('$') => self.str_variable(&mut bytes, &mut parts),
@@ -809,9 +814,9 @@ impl<'a> Tokenizer<'a> {
         }
         let bak_state_str = self.state.clone();
         if self.input().starts_with("b<<<") {
-            self.advance(4);
+            self.advance_bytes(4);
         } else if self.input().starts_with("<<<") {
-            self.advance(3);
+            self.advance_bytes(3);
         } else {
             return Err(SyntaxError::None);
         }
@@ -820,10 +825,10 @@ impl<'a> Tokenizer<'a> {
         let mut doc_ty = DocType::HereDoc;
         if self.input().starts_with('\'') {
             doc_ty = DocType::NowDoc;
-            self.advance(1);
+            self.advance_bytes(1);
         } else if self.input().starts_with('"') {
             doc_ty = DocType::HereDocEncapsed;
-            self.advance(1);
+            self.advance_bytes(1);
         }
         // match the label
         let label = if let Some(label) = self._label().map(|x| x.0.to_owned()) {
@@ -840,7 +845,7 @@ impl<'a> Tokenizer<'a> {
         };
         if let Some(chr) = required_chr {
             if self.input().starts_with(chr) {
-                self.advance(1);
+                self.advance_bytes(1);
             } else {
                 self.state = bak_state_str;
                 return Err(SyntaxError::None);
@@ -870,23 +875,27 @@ impl<'a> Tokenizer<'a> {
                 Some(end_pos) => end_pos,
                 None => self.input().len(),
             };
-            bytes.extend(self.advance(end_pos).as_bytes());
+            bytes.extend(self.advance_chars(end_pos).as_bytes());
 
             match (self.input().chars().nth(0), is_now_doc) {
                 (Some('\n'), _) => {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     self.state.next_line();
                     // we are done if we are followed by our end-tag
                     if self.input().starts_with(&end_tag) {
-                        self.advance(end_tag.len());
+                        self.advance_bytes(end_tag.len());
+                        // only skip the semicolon for the validation of the here/nowdoc
+                        // but make sure it end's up in the token stream
+                        let old_pos = self.input_pos();
                         if self.input().starts_with(';') {
-                            self.advance(1);
+                            self.advance_bytes(1);
                         }
                         if !self.newline() {
                             let old_pos = self.input_pos();
                             self.state = bak_state_str;
                             return Err(SyntaxError::Unterminated("Here/Nowdoc: end-tag requires to be followed by a newline", mk_span(self.state.src_pos, old_pos)));
                         }
+                        self.state.src_pos = old_pos;
                         break
                     } else {
                         bytes.push(b'\n');
@@ -902,15 +911,15 @@ impl<'a> Tokenizer<'a> {
                 }
             }
         }
+        let current_pos = self.input_pos();
         if is_now_doc {
             assert!(parts.is_empty());
             let ret_token = match String::from_utf8(bytes) {
                 Ok(str_) => Token::ConstantEncapsedString(self.interner.intern(&str_)),
                 Err(err) => Token::BinaryCharSequence(Rc::new(err.into_bytes())),
             };
-            return Ok(TokenSpan(ret_token, mk_span(bak_state_str.src_pos, self.input_pos())));
+            return Ok(TokenSpan(ret_token, mk_span(bak_state_str.src_pos, current_pos)));
         }
-        let current_pos = self.input_pos();
         Ok(self.return_tokens_from_parts(
             TokenSpan(Token::HereDocStart, mk_span(bak_state_str.src_pos, bak_state_str.src_pos + 1)),
             TokenSpan(Token::HereDocEnd, mk_span(current_pos - 1, current_pos)),
@@ -931,35 +940,35 @@ impl<'a> Tokenizer<'a> {
             0
         };
         let comment = if start_tokens_count > 0 {
-                self.advance(start_tokens_count);
-                let end_pos = match self.input().chars().position(|x| x == '\n') {
-                    Some(end_pos) => end_pos,
-                    None => self.input().len(),
-                };
-                self.advance(end_pos)
+            self.advance_bytes(start_tokens_count);
+            let end_pos = match self.input().chars().position(|x| x == '\n') {
+                Some(end_pos) => end_pos,
+                None => self.input().len(),
+            };
+            self.advance_chars(end_pos)
+        } else {
+            // block comment
+            let start_tokens_count = if self.input().starts_with("/**") {
+                doc_comment = true;
+                3
+            } else if self.input().starts_with("/*") {
+                2
             } else {
-                // block comment
-                let start_tokens_count = if self.input().starts_with("/*") {
-                    2
-                } else if self.input().starts_with("/**") {
-                    doc_comment = true;
-                    3
-                } else {
-                    0
+                0
+            };
+            if start_tokens_count > 0 {
+                self.advance_bytes(start_tokens_count);
+                let end_pos = match self.input().find("*/") {
+                    Some(end_pos) => end_pos,
+                    None => {
+                        let old_pos = self.state.src_pos;
+                        self.state.src_pos = old_pos;
+                    	return Err(SyntaxError::Unterminated("comment", mk_span(self.input_pos(), old_pos)));
+                	}
                 };
-                if start_tokens_count > 0 {
-                    self.advance(start_tokens_count);
-                    let end_pos = match self.input().find("*/") {
-                        Some(end_pos) => end_pos,
-                        None => {
-                            let old_pos = self.state.src_pos;
-                            self.state.src_pos = old_pos;
-                        	return Err(SyntaxError::Unterminated("comment", mk_span(self.input_pos(), old_pos)));
-                    	}
-                    };
-                    let ret = self.advance(end_pos);
-                    self.advance(2);
-                    ret
+                let ret = self.advance_bytes(end_pos);
+                self.advance_bytes(2);
+                ret
             } else {
                 return Err(SyntaxError::None);
             }
@@ -1041,7 +1050,7 @@ impl<'a> Tokenizer<'a> {
         }
         if end_pos != 0 {
             let span = mk_span(self.input_pos(), self.input_pos() + end_pos);
-            let str_ = self.advance(end_pos);
+            let str_ = self.advance_bytes(end_pos);
             return Ok(TokenSpan(Token::InlineHtml(self.interner.intern(str_)), span));
         }
         Ok(TokenSpan(Token::End, mk_span(self.code.len(), self.code.len())))
@@ -1110,12 +1119,12 @@ impl<'a> Tokenizer<'a> {
             let keyword = "yield";
             if self.input().starts_with_ci(keyword) {
                 let old_pos = self.input_pos();
-                self.advance(keyword.len());
+                self.advance_bytes(keyword.len());
                 // yield_from submatch
                 self.whitespace();
                 let keyword = "from";
                 if self.input().starts_with_ci(keyword) {
-                    self.advance(keyword.len());
+                    self.advance_bytes(keyword.len());
                     let span = mk_span(old_pos, self.input_pos());
                     Ok(TokenSpan(Token::YieldFrom, span))
                 } else {
@@ -1187,12 +1196,12 @@ impl<'a> Tokenizer<'a> {
                 Err(SyntaxError::None)
             }
             let old_pos = self.input_pos();
-            self.advance(1);
+            self.advance_bytes(1);
             self.whitespace_only();
             if let Ok(ret) = try_determine_cast_type(self) {
                 self.whitespace_only();
                 if self.input().starts_with(')') {
-                    self.advance(1);
+                    self.advance_bytes(1);
                     return Ok(TokenSpan(ret.0, mk_span(old_pos, self.input_pos())));
                 }
             }
