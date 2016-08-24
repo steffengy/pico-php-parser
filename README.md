@@ -28,3 +28,4 @@ To ensure that the most common constructs of the PHP-language work, we have **2 
 
 ## Current Test Targets
 - [Laravel (Framework)](https://github.com/laravel/framework)
+- [Slim](https://github.com/slimphp/Slim)
