@@ -576,7 +576,11 @@ impl<W: Write> PrettyPrinter<W> {
                 try!(self.write("("));
                 try!(self.print_argument_list(args));
                 self.write(")")
-            }
+            },
+            Expr_::Unpack(ref arg) => {
+                try!(self.write("..."));
+                self.print_expression(arg)
+            },
             Expr_::UnaryOp(ref operator, ref operand) => {
                 let (op, can_have_parens) = match *operator {
                     UnaryOp::Positive => ("+", true),

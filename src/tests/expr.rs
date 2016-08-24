@@ -306,3 +306,10 @@ fn parse_expr_priority_parents_call() {
         vec![ enb!(12,18, Expr_::Path(Path::identifier(false, "method".into()))) ]
     )), vec![])));
 }
+
+#[test]
+fn parse_expr_unpack() {
+    assert_eq!(process_expr("t(...$email)"), enb!(0,12, Expr_::Call(eb!(0,1, Expr_::Path(Path::identifier(false, "t".into()))), vec![
+        enb!(2,11, Expr_::Unpack(eb!(5,11, Expr_::Variable("email".into()))))
+    ])));
+}

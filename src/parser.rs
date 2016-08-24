@@ -444,7 +444,18 @@ impl Parser {
                 return Ok(vec![]);
             });
             // parse arguments (non_empty_argument_list)
-            let args = try!(self.parse_expression_list());
+            let mut args = vec![];
+            loop {
+                let start_pos = if_lookahead!(self, Token::Ellipsis, token, Some(token.1.start), None);
+                let arg = try!(self.parse_expression(Precedence::None));
+                if let Some(start_pos) = start_pos {
+                    let span = Span { start: start_pos, ..arg.1.clone() };
+                    args.push(Expr(Expr_::Unpack(Box::new(arg)), span));
+                } else {
+                    args.push(arg);
+                }
+                if_lookahead!(self, Token::Comma, _tok, {}, break);
+            }
 
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose, _token, return Ok(args));
         });

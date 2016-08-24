@@ -215,6 +215,8 @@ pub enum Expr_ {
     StaticMember(Box<Expr>, Vec<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     New(Box<Expr>, Vec<Expr>),
+    /// variadic unpack ...
+    Unpack(Box<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
     BinaryOp(Op, Box<Expr>, Box<Expr>),
     InstanceOf(Box<Expr>, Box<Expr>),
