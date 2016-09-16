@@ -6,7 +6,7 @@ mod interner;
 mod tokens;
 
 #[allow(dead_code)] //TODO: remove some day
-mod ast;
+pub mod ast;
 
 mod tokenizer;
 mod parser;

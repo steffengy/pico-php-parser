@@ -93,6 +93,7 @@ fn parse_stmt_return_ternary_assign() {
 #[test]
 fn parse_stmt_compound_assignment() {
     assert_eq!(process_stmt("$test+=4;"), senb!(0,8, Expr_::CompoundAssign(eb!(0,5, Expr_::Variable("test".into())), Op::Add, eb!(7,8, Expr_::Int(4)))));
+    assert_eq!(process_stmt("$test|=0;"), senb!(0,8, Expr_::CompoundAssign(eb!(0,5, Expr_::Variable("test".into())), Op::Or, eb!(7,8, Expr_::Int(0)))));
 }
 
 #[test]

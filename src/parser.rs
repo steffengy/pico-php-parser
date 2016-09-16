@@ -994,6 +994,7 @@ impl Parser {
                     Token::ConcatEqual => Some(Op::Concat),
                     Token::ModEqual => Some(Op::Mod),
                     Token::AndEqual => Some(Op::And),
+                    Token::OrEqual => Some(Op::Or),
                     Token::XorEqual => Some(Op::BitwiseExclOr),
                     Token::SlEqual => Some(Op::Sl),
                     Token::SrEqual => Some(Op::Sr),
