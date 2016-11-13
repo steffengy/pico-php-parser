@@ -7,7 +7,6 @@
 /// ! [2] http://effbot.org/zone/simple-top-down-parsing.htm
 /// ! [3] https://github.com/php/php-src/blob/ab304579ff046426f281e9a95abea8d611e38e1c/Zend/zend_language_parser.y
 
-use std::mem;
 use std::borrow::{Borrow, Cow};
 use std::iter;
 use tokenizer::{Tokenizer, Token, TokenSpan};
@@ -1474,17 +1473,25 @@ impl Parser {
         // parse a for statement
         if_lookahead!(self, Token::For, token, {
             if_lookahead_expect!(self, Token::ParenthesesOpen, Token::ParenthesesOpen);
-            let mut stmts = [None, None, None];
-            let mut i = 0;
-            while {
-                stmts[i] = try!(self.parse_opt_expression(Precedence::None)).map(Box::new);
-                i += 1;
-                i < stmts.len()
-            } { if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon) }
+            let (mut initial, mut cond, mut looper) = (vec![], vec![], vec![]);
+            for i in 0..3 {
+                let ref mut exprs = [&mut initial, &mut cond, &mut looper][i];
+                let first_expr = try!(self.parse_opt_expression(Precedence::None));
+                // parse for_exprs
+                if let Some(expr) = first_expr {
+                    exprs.push(expr);
+                    while if_lookahead!(self, Token::Comma, _tok, true, false) {
+                        exprs.push(try!(self.parse_expression(Precedence::None)));
+                    }
+                }
+                // the last semicolon is not required and a syntax error if it exists
+                if i < 2 {
+                    if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon)
+                }
+            }
             if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             let (block, bl_span) = try!(self.parse_statement_extract_block());
             let span = mk_span(token.1.start, bl_span.end);
-            let (initial, cond, looper) = (mem::replace(&mut stmts[0], None) , mem::replace(&mut stmts[1], None), mem::replace(&mut stmts[2], None));
             return Ok(Stmt(Stmt_::For(initial, cond, looper, block), span));
         });
         // parse a switch statement

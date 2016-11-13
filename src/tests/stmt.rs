@@ -159,9 +159,21 @@ fn parse_stmt_do_while() {
 #[test]
 fn parse_stmt_for() {
     assert_eq!(process_stmt("for ($i = 0; $i < 10; $i++) { echo 1; }"), st!(0,39, Stmt_::For(
-        Some(eb!(5,11, Expr_::Assign(eb!(5,7, Expr_::Variable("i".into())), eb!(10,11, Expr_::Int(0))))),
-        Some(eb!(13,20, Expr_::BinaryOp(Op::Lt, eb!(13,15, Expr_::Variable("i".into())), eb!(18,20, Expr_::Int(10))))),
-        Some(eb!(22,26, Expr_::UnaryOp(UnaryOp::PostInc, eb!(22,24, Expr_::Variable("i".into()))))),
+        vec![enb!(5,11, Expr_::Assign(eb!(5,7, Expr_::Variable("i".into())), eb!(10,11, Expr_::Int(0))))],
+        vec![enb!(13,20, Expr_::BinaryOp(Op::Lt, eb!(13,15, Expr_::Variable("i".into())), eb!(18,20, Expr_::Int(10))))],
+        vec![enb!(22,26, Expr_::UnaryOp(UnaryOp::PostInc, eb!(22,24, Expr_::Variable("i".into()))))],
+        Block(vec![ st!(30,37, Stmt_::Echo(vec![ enb!(35,36, Expr_::Int(1)) ])) ]),
+    )));
+}
+
+#[test]
+fn parse_stmt_for_exprs() {
+    assert_eq!(process_stmt("for ($i = 0, $c=4;;)        { echo 1; }"), st!(0,39, Stmt_::For(
+        vec![
+            enb!(5,11, Expr_::Assign(eb!(5,7, Expr_::Variable("i".into())), eb!(10,11, Expr_::Int(0)))),
+            enb!(13,17, Expr_::Assign(eb!(13,15, Expr_::Variable("c".into())), eb!(16,17, Expr_::Int(4)))),
+        ],
+        vec![], vec![],
         Block(vec![ st!(30,37, Stmt_::Echo(vec![ enb!(35,36, Expr_::Int(1)) ])) ]),
     )));
 }

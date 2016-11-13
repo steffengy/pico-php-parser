@@ -258,7 +258,7 @@ pub enum Stmt_ {
     While(Box<Expr>, Block),
     DoWhile(Block, Box<Expr>),
     /// For(initializer=.0; cond=.1; end_of_loop=.2) statement=.3
-    For(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>, Block),
+    For(Vec<Expr>, Vec<Expr>, Vec<Expr>, Block),
     ForEach(Box<Expr>, Option<Box<Expr>>, Box<Expr>, Block),
     /// Try(TryBlock, CatchClauses, FinallyClause)
     Try(Block, Vec<CatchClause>, Option<Block>),

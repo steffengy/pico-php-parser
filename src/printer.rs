@@ -365,12 +365,21 @@ impl<W: Write> PrettyPrinter<W> {
                 self.write(");\n")
             }
             Stmt_::For(ref init, ref looper, ref cond, ref bl) => {
+                fn print_for_exprs<W: fmt::Write>(printer: &mut PrettyPrinter<W>, exprs: &[Expr]) -> fmt::Result {
+                    for (i, expr) in exprs.iter().enumerate() {
+                        if i > 0 {
+                            try!(printer.write(","));
+                        }
+                        try!(printer.print_expression(expr));
+                    }
+                    Ok(())
+                }
                 try!(self.write_indented("for ("));
-                try!(self.print_opt_expression(&init.as_ref().map(|x| &**x)));
+                try!(print_for_exprs(self, init));
                 try!(self.write("; "));
-                try!(self.print_opt_expression(&looper.as_ref().map(|x| &**x)));
+                try!(print_for_exprs(self, looper));
                 try!(self.write(";"));
-                try!(self.print_opt_expression(&cond.as_ref().map(|x| &**x)));
+                try!(print_for_exprs(self, cond));
                 try!(self.write(") "));
                 self.print_block(bl)
             }
