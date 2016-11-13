@@ -277,13 +277,13 @@ macro_rules! if_lookahead_expect {
 /// all functions generally can not be assumed to restore state or position in case of an error
 /// if at any position alternative-probing is done, the code doing it is responsible for restoring the state accordingly
 impl Parser {
-    fn parse_unary_expression(&mut self, precedence: Precedence) -> Result<Expr, ParserError> {
+    fn parse_unary_expression(&mut self) -> Result<Expr, ParserError> {
         let left = match self.next_token() {
             Some(x) => x.clone(),
             None => return Err(ParserError::new(vec![], self.pos)),
         };
         self.advance(1);
-        let mut left = match left.0 {
+        let left = match left.0 {
             Token::Plus | Token::Minus | Token::BwNot | Token::BoolNot | Token::Silence |
             Token::Increment | Token::Decrement => {
                 let op = match left.0 {
@@ -305,109 +305,100 @@ impl Parser {
                 try!(self.parse_postfix_expression())
             }
         };
-        // handle other binary expressions
-        loop {
-            match self.parse_binary_expression(&mut left, precedence.clone()) {
-                Ok(true) => (),
-                Ok(false) | Err(_) => break,
-            };
-        }
         Ok(left)
     }
 
     fn parse_binary_expression(&mut self,
-                               left: &mut Expr,
                                precedence: Precedence)
-                               -> Result<bool, ParserError> {
-        // lookahead to check for binary expression
-        let (new_precedence, binary_op) = {
-            match self.next_token() {
-                Some(x) => (x.0.precedence(), match x.0 {
-                    Token::LogicalOr => Some(Op::Or),
-                    Token::LogicalXor => Some(Op::BitwiseExclOr),
-                    Token::LogicalAnd => Some(Op::And),
-                    Token::BoolOr => Some(Op::Or),
-                    Token::BoolAnd => Some(Op::And),
-                    Token::BwOr => Some(Op::BitwiseInclOr),
-                    Token::BwXor => Some(Op::BitwiseExclOr),
-                    Token::Ampersand => Some(Op::BitwiseAnd),
-                    Token::IsIdentical => Some(Op::Identical),
-                    Token::IsNotIdentical => Some(Op::NotIdentical),
-                    Token::IsEqual => Some(Op::Eq),
-                    Token::IsNotEqual => Some(Op::Neq),
-                    Token::SpaceShip => Some(Op::Spaceship),
-                    Token::Lt => Some(Op::Lt),
-                    Token::Gt => Some(Op::Gt),
-                    Token::IsSmallerOrEqual => Some(Op::Le),
-                    Token::IsGreaterOrEqual => Some(Op::Ge),
-                    Token::Sl => Some(Op::Sl),
-                    Token::Sr => Some(Op::Sr),
-                    Token::Plus => Some(Op::Add),
-                    Token::Minus => Some(Op::Sub),
-                    Token::Dot => Some(Op::Concat),
-                    Token::Mul => Some(Op::Mul),
-                    Token::Div => Some(Op::Div),
-                    Token::Mod => Some(Op::Mod),
-                    Token::Pow => Some(Op::Pow),
-                    _ => None,
-                }),
-                None => (None, None),
+                               -> Result<Expr, ParserError> {
+        let mut left = try!(self.parse_unary_expression());
+        loop {
+            // lookahead to check for binary expression
+            let (new_precedence, binary_op) = {
+                match self.next_token() {
+                    Some(x) => (x.0.precedence(), match x.0 {
+                        Token::LogicalOr => Some(Op::Or),
+                        Token::LogicalXor => Some(Op::BitwiseExclOr),
+                        Token::LogicalAnd => Some(Op::And),
+                        Token::BoolOr => Some(Op::Or),
+                        Token::BoolAnd => Some(Op::And),
+                        Token::BwOr => Some(Op::BitwiseInclOr),
+                        Token::BwXor => Some(Op::BitwiseExclOr),
+                        Token::Ampersand => Some(Op::BitwiseAnd),
+                        Token::IsIdentical => Some(Op::Identical),
+                        Token::IsNotIdentical => Some(Op::NotIdentical),
+                        Token::IsEqual => Some(Op::Eq),
+                        Token::IsNotEqual => Some(Op::Neq),
+                        Token::SpaceShip => Some(Op::Spaceship),
+                        Token::Lt => Some(Op::Lt),
+                        Token::Gt => Some(Op::Gt),
+                        Token::IsSmallerOrEqual => Some(Op::Le),
+                        Token::IsGreaterOrEqual => Some(Op::Ge),
+                        Token::Sl => Some(Op::Sl),
+                        Token::Sr => Some(Op::Sr),
+                        Token::Plus => Some(Op::Add),
+                        Token::Minus => Some(Op::Sub),
+                        Token::Dot => Some(Op::Concat),
+                        Token::Mul => Some(Op::Mul),
+                        Token::Div => Some(Op::Div),
+                        Token::Mod => Some(Op::Mod),
+                        Token::Pow => Some(Op::Pow),
+                        _ => None,
+                    }),
+                    None => (None, None),
+                }
+            };
+            // no expression found, done
+            let new_precedence = match new_precedence {
+                None => break,
+                Some(x) => x,
+            };
+            if (precedence as usize) >= (new_precedence as usize) {
+                // nothing of the required precedence we can handle
+                break;
             }
-        };
-        // no expression found, done
-        let new_precedence = match new_precedence {
-            None => return Ok(false),
-            Some(x) => x,
-        };
-        if (precedence as usize) >= (new_precedence as usize) {
-            // nothing of the required precedence we can handle
-            return Ok(false);
-        }
 
-        // consume the operator token
-        let op_token = self.next_token().unwrap().clone();
-        self.advance(1);
+            // consume the operator token
+            let op_token = self.next_token().unwrap().clone();
+            self.advance(1);
 
-        // also try to match the ternary here.. since it's PHP and it's left associative therefor
-        if let Token::QuestionMark = op_token.0 {
-            let expr_ternary_if = try!(self.parse_opt_expression(new_precedence));
-            if_lookahead_expect!(self, Token::Colon, Token::Colon);
-            let expr_ternary_else = try!(self.parse_expression(new_precedence));
-            let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-            let span = mk_span(tmp.1.start, expr_ternary_else.1.end);
-            *left = Expr(Expr_::TernaryIf(tmp,
-                                          expr_ternary_if.map(Box::new),
-                                          Box::new(expr_ternary_else)),
-                         span);
-            return Ok(true);
-        }
-
-        // also try to match instanceof (non associative!)
-        if let Token::InstanceOf = op_token.0 {
-            if let Expr(Expr_::InstanceOf(_, _), _) = *left {
-                // TODO: throw an error due to the non-associative nature
-                unreachable!();
+            // also try to match the ternary here.. since it's PHP and it's left associative therefor
+            if let Token::QuestionMark = op_token.0 {
+                let expr_ternary_if = try!(self.parse_opt_expression(new_precedence));
+                if_lookahead_expect!(self, Token::Colon, Token::Colon);
+                let expr_ternary_else = try!(self.parse_expression(new_precedence));
+                let span = mk_span(left.1.start, expr_ternary_else.1.end);
+                left = Expr(Expr_::TernaryIf(Box::new(left),
+                                            expr_ternary_if.map(Box::new),
+                                            Box::new(expr_ternary_else)),
+                            span);
+                continue;
             }
-            let right = try!(self.parse_class_name_reference());
-            let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-            let span = mk_span(tmp.1.start, right.1.end);
-            *left = Expr(Expr_::InstanceOf(tmp, Box::new(right)), span);
-            return Ok(true);
+
+            // also try to match instanceof (non associative!)
+            if let Token::InstanceOf = op_token.0 {
+                if let Expr(Expr_::InstanceOf(_, _), _) = left {
+                    // TODO: throw an error due to the non-associative nature
+                    unreachable!();
+                }
+                let right = try!(self.parse_class_name_reference());
+                let span = mk_span(left.1.start, right.1.end);
+                left = Expr(Expr_::InstanceOf(Box::new(left), Box::new(right)), span);
+                continue;
+            }
+
+            // handle regular binary-op expression
+            let binary_op = binary_op.unwrap();
+
+            let new_precedence = match op_token.0.associativity() {
+                Associativity::Right => Precedence::from_usize((new_precedence as usize) - 1),
+                Associativity::Left => new_precedence,
+            };
+            let right = try!(self.parse_expression(new_precedence));
+            let span = mk_span(left.1.start, right.1.end);
+            left = Expr(Expr_::BinaryOp(binary_op, Box::new(left), Box::new(right)), span);
         }
-
-        // handle regular binary-op expression
-        let binary_op = binary_op.unwrap();
-
-        let new_precedence = match op_token.0.associativity() {
-            Associativity::Right => Precedence::from_usize((new_precedence as usize) - 1),
-            Associativity::Left => new_precedence,
-        };
-        let right = try!(self.parse_expression(new_precedence));
-        // TODO: using Break(0) is a hack here (and above), get rid of the mem::replace somehow
-        let tmp = Box::new(mem::replace(left, Expr(Expr_::Int(0), Span::new())));
-        let span = mk_span(tmp.1.start, right.1.end);
-        *left = Expr(Expr_::BinaryOp(binary_op, tmp, Box::new(right)), span);
-        Ok(true)
+        Ok(left)
     }
 
     fn parse_simple_variable(&mut self) -> Result<(Variable, Span), ParserError> {
@@ -639,7 +630,7 @@ impl Parser {
     }
 
     fn parse_expression(&mut self, prec: Precedence) -> Result<Expr, ParserError> {
-        let expr = try!(self.parse_unary_expression(prec));
+        let expr = try!(self.parse_binary_expression(prec));
         Ok(expr)
     }
 
