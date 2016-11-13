@@ -664,20 +664,49 @@ impl Parser {
         if_lookahead!(self, Token::Ellipsis, _tok, true, false)
     }
 
+    fn parse_type_expr(&mut self) -> Result<NullableTy, Option<ParserError>> {
+        let nullable = if_lookahead!(self, Token::QuestionMark, _tok, true, false);
+        let ty = if_lookahead!(self, Token::Array, _tok, Ty::Array, if_lookahead!(self, Token::Callable, _tok, Ty::Callable, {
+            let (path, _) = match self.parse_name() {
+                Err(err) => if nullable {
+                    return Err(Some(err))
+                } else {
+                    return Err(None)
+                },
+                Ok(x) => x,
+            };
+            let translated_ty = if path.namespace.is_none() && !path.is_absolute {
+                let lower_path = (path.identifier.borrow() as &str).to_lowercase();
+                match lower_path.as_str() {
+                    "bool" | "boolean" => Some(Ty::Bool),
+                    "string" => Some(Ty::String),
+                    "double" => Some(Ty::Double),
+                    "float" => Some(Ty::Float),
+                    "int" | "integer" => Some(Ty::Int),
+                    "object" => Some(Ty::Object(None)),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            translated_ty.unwrap_or(Ty::Object(Some(path)))
+        }));
+        if nullable {
+            Ok(NullableTy::Nullable(ty))
+        } else {
+            Ok(NullableTy::NonNullable(ty))
+        }
+    }
+
     fn parse_parameter_list(&mut self) -> (Vec<ParamDefinition>, Option<ParserError>) {
         let mut params = vec![];
         loop {
             // type hint:
-            let nullable = if_lookahead!(self, Token::QuestionMark, _tok, true, false);
-            let mut ty = None;
-            if_lookahead!(self, Token::Array, _tok, ty=Some(Ty::Array), if_lookahead!(self, Token::Callable, _tok, ty=Some(Ty::Callable), {
-                match self.parse_name() {
-                    Ok((path, _)) => ty=Some(Ty::Object(Some(path))),
-                    Err(e) => if nullable {
-                        return (params, Some(e))
-                    },
-                }
-            }));
+            let ty = match self.parse_type_expr() {
+                Ok(x) => Some(x),
+                Err(Some(err)) => return (params, Some(err)),
+                Err(None) => None,
+            };
             let is_ref = self.parse_is_ref();
             let is_variadic = self.parse_is_variadic();
             // parameter name
@@ -743,7 +772,13 @@ impl Parser {
                 if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             });
         }
-        // TODO: return_type
+        let ret_ty = if_lookahead!(self, Token::Colon, _tok, {
+            match self.parse_type_expr() {
+                Ok(ty) => Some(ty),
+                Err(Some(err)) => return Err(err),
+                Err(None) => None,
+            }
+        }, None);
         let no_body = if allow_abstract {
             if_lookahead!(self, Token::SemiColon, _tok, true, false)
         } else {
@@ -766,6 +801,7 @@ impl Parser {
             body: body,
             usev: use_variables,
             ret_ref: returns_ref,
+            ret_ty: ret_ty,
         };
         let span = mk_span(span.start, self.tokens[self.pos - 1].1.end);
         Ok(Stmt(match name {

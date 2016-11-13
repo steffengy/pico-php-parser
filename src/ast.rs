@@ -305,7 +305,10 @@ pub enum Const {
 }
 /// A type and flag describing whether it's nullable
 #[derive(Clone, Debug, PartialEq)]
-pub struct NullableTy(pub Ty, pub bool);
+pub enum NullableTy {
+    NonNullable(Ty),
+    Nullable(Ty),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum IncludeTy {
@@ -327,7 +330,7 @@ pub struct ParamDefinition {
     pub as_ref: bool,
     pub variadic: bool,
     /// The type of the parameter
-    pub ty: Option<Ty>,
+    pub ty: Option<NullableTy>,
     /// The default value for the parameter
     pub default: Option<Expr>,
 }
@@ -341,6 +344,7 @@ pub struct FunctionDecl {
     /// the boolean indicates whether to bind by-reference (true)
     pub usev: Vec<(bool, RcStr)>,
     pub ret_ref: bool,
+    pub ret_ty: Option<NullableTy>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

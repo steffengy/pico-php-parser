@@ -3,7 +3,7 @@ use std::fmt::{self, Write};
 use std::borrow::Borrow;
 use tokens::Token;
 use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr,
-          Expr_, IncludeTy, Op, Path, UnaryOp, Ty, TraitUse, UseClause};
+          Expr_, IncludeTy, Op, Path, UnaryOp, Ty, NullableTy, TraitUse, UseClause};
 use ast::{Member, MemberModifiers, MemberModifier, Variable};
 
 pub struct PrettyPrinter<W: Write> {
@@ -797,6 +797,19 @@ impl fmt::Display for Ty {
                 try!(write!(f, "{}", path));
                 return Ok(());
             }
+        };
+        write!(f, "{}", ty)
+    }
+}
+
+impl fmt::Display for NullableTy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ty = match *self {
+            NullableTy::Nullable(ref ty) => {
+                try!(write!(f, "?"));
+                ty
+            },
+            NullableTy::NonNullable(ref ty) => ty,
         };
         write!(f, "{}", ty)
     }
