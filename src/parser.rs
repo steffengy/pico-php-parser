@@ -723,6 +723,8 @@ impl Parser {
                 }
             }))
         };
+
+
         if_lookahead_expect!(self, Token::ParenthesesOpen, Token::ParenthesesOpen);
         let (params, params_err) = self.parse_parameter_list();
         if_lookahead!(self, Token::ParenthesesClose, _tok, {}, return Err(params_err.unwrap()));
@@ -743,7 +745,16 @@ impl Parser {
                 if_lookahead_expect!(self, Token::ParenthesesClose, Token::ParenthesesClose);
             });
         }
-        // TODO: return_type
+
+        let return_type = if_lookahead!(self, Token::Colon, _tok, {
+            if_lookahead!(self, Token::String(_), _tok, {
+                match _tok.0 {
+                    Token::String(str_) => Some(str_),
+                    _ => None,
+                }
+            }, None)
+        }, None);
+
         let no_body = if allow_abstract {
             if_lookahead!(self, Token::SemiColon, _tok, true, false)
         } else {
@@ -766,6 +777,7 @@ impl Parser {
             body: body,
             usev: use_variables,
             ret_ref: returns_ref,
+            ret_type: return_type
         };
         let span = mk_span(span.start, self.tokens[self.pos - 1].1.end);
         Ok(Stmt(match name {
