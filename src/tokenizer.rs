@@ -148,23 +148,16 @@ macro_rules! state_helper {
 
 macro_rules! match_token_alias {
     // set state syntax
-    ($self_:expr, $alias:expr, $token:ident, state=$new_state:ident) => {{
-        let str_repr = $alias;
-        if $self_.input().starts_with_ci(str_repr) {
-            let old_pos = $self_.state.src_pos;
-            $self_.advance_bytes(str_repr.len());
-            let span = mk_span(old_pos, $self_.state.src_pos);
-            $self_.state.state = State::$new_state;
-            Ok(TokenSpan(Token::$token, span))
-        } else { Err(SyntaxError::None) }
-    }};
+    ($self_:expr, $alias:expr, $token:ident, state=$new_state:ident) => (match_token_alias!($self_, $alias, $token, {$self_.state.state = State::$new_state}));
     // state unchanged
-    ($self_:expr, $alias:expr, $token:ident) => {{
+    ($self_:expr, $alias:expr, $token:ident) => (match_token_alias!($self_, $alias, $token, {}));
+    ($self_:expr, $alias:expr, $token:ident, $bl:expr) => {{
         let str_repr = $alias;
         if $self_.input().starts_with_ci(str_repr) {
             let old_pos = $self_.state.src_pos;
             $self_.advance_bytes(str_repr.len());
             let span = mk_span(old_pos, $self_.state.src_pos);
+            $bl;
             Ok(TokenSpan(Token::$token, span))
         } else { Err(SyntaxError::None) }
     }};

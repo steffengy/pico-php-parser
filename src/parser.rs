@@ -143,6 +143,11 @@ macro_rules! from_usize {
     ($($arg:ident),*) => {
         impl Precedence {
             fn from_usize(p: usize) -> Precedence {
+                // only exists to catch incomplete from_usize! calls
+                // allows compiler errors to be generated at compile time
+                fn __static_verify_from_usize_unused(p: Precedence) {
+                    match p { $( Precedence::$arg => (), )* }
+                }
                 match p {
                     $(
                     x if x == (Precedence::$arg as usize) => Precedence::$arg,
@@ -169,6 +174,7 @@ from_usize!(None,
             Add,
             Mul,
             Pow,
+            InstanceOf,
             Unary);
 
 impl Token {
