@@ -269,6 +269,8 @@ pub enum Stmt_ {
     /// so basically we have a mapping from all-cases -> body in .1
     /// TODO: should be desugared into an if-statement
     Switch(Box<Expr>, Vec<SwitchCase>),
+
+    Goto(RcStr),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -368,6 +370,8 @@ pub enum Decl {
     Trait(RcStr, Vec<Member>),
     StaticVars(Vec<(RcStr, Option<Expr>)>),
     GlobalVars(Vec<Variable>),
+    // a goto jump target
+    Label(RcStr),
 }
 
 #[derive(Clone, Debug, PartialEq)]

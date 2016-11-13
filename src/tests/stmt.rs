@@ -270,6 +270,11 @@ fn parse_stmt_switch() {
 }
 
 #[test]
+fn parse_stmt_goto() {
+    assert_eq!(process_stmt("goto hallo_welt;"), st!(0, 16, Stmt_::Goto("hallo_welt".into())));
+}
+
+#[test]
 fn parse_stmt_func_decl() {
     assert_eq!(process_stmt("function test() { ok(); }"), st!(0,25, Stmt_::Decl(Decl::GlobalFunction("test".into(), FunctionDecl { params: vec![],
         body: Some(Block(vec![ senb!(18,22, Expr_::Call(eb!(18,20, Expr_::Path(Path::identifier(false, "ok".into()))), vec![])) ])), usev: vec![], ret_ref: false, })
@@ -434,4 +439,9 @@ fn parse_stmt_closure_use() {
 #[test]
 fn parse_namespace_decl() {
     assert_eq!(process_stmt("namespace Foo\\Bar;"), st!(0,17, Stmt_::Decl(Decl::Namespace(Path::ns_identifier(false, "Foo".into(), "Bar".into())))));
+}
+
+#[test]
+fn parse_label_decl() {
+    assert_eq!(process_stmt("test_abc:"), st!(0, 9, Stmt_::Decl(Decl::Label("test_abc".into()))));
 }

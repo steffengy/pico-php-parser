@@ -140,6 +140,10 @@ impl<W: Write> PrettyPrinter<W> {
                     try!(self.print_variable(varname));
                 }
                 self.write(";\n")
+            },
+            Decl::Label(ref label) => {
+                try!(self.write(label.borrow()));
+                self.write(":\n")
             }
         }
     }
@@ -436,6 +440,11 @@ impl<W: Write> PrettyPrinter<W> {
                 }
                 self.indentation -= 1;
                 self.write("}\n")
+            },
+            Stmt_::Goto(ref label) => {
+                try!(self.write_indented("goto "));
+                try!(self.write(label.borrow()));
+                self.write(";\n")
             }
         }
     }

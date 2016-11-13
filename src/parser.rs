@@ -1642,6 +1642,23 @@ impl Parser {
             _ => return Err(ParserError::new(vec![], self.pos)),
         });
 
+        // goto stuff
+        if_lookahead!(self, Token::Goto, goto_tok, {
+            let label = if_lookahead_expect!(self, Token::String(_), Token::String(self.interner.intern("")), token, match token.0 {
+                Token::String(str_) => str_,
+                _ => unreachable!()
+            });
+            let end_pos = if_lookahead_expect!(self, Token::SemiColon, Token::SemiColon, token, token.1.end);
+            let stmt_span = mk_span(goto_tok.1.start, end_pos);
+            return Ok(Stmt(Stmt_::Goto(label), stmt_span));
+        });
+        if_lookahead_restore!(self, Token::String(_), token, match token.0 {
+            Token::String(str_) => if_lookahead!(self, Token::Colon, end_tok, {
+                return Ok(Stmt(Stmt_::Decl(Decl::Label(str_)), mk_span(token.1.start, end_tok.1.end)));
+            }),
+            _ => unreachable!(),
+        });
+
         // expr ';'
         deepest!(deepest_err, match self.parse_expression(Precedence::None) {
             Err(x) => Err(x),
