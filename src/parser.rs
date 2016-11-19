@@ -14,7 +14,7 @@ use interner::{Interner, RcStr};
 pub use tokenizer::{Span, SyntaxError, TokenizerExternalState, mk_span};
 pub use ast::{Block, CatchClause, Expr, Expr_, IncludeTy, UnaryOp, Op, Path, SwitchCase, Stmt,
               Stmt_, NullableTy, Ty, TraitUse, UseClause};
-pub use ast::{Const, Decl, FunctionDecl, ClassDecl, ParamDefinition, Member, MemberModifier,
+pub use ast::{Decl, FunctionDecl, ClassDecl, ParamDefinition, Member, MemberModifier,
               MemberModifiers, ClassModifier, ClassModifiers};
 pub use ast::Variable;
 
@@ -1177,23 +1177,7 @@ impl Parser {
         // class_name T_PAAMAYIM_NEKUDOTAYIM identifier
         // parse a class_name if we don't find T_PAAMAYIM_NEKUDOTAYIM we just return the class_name
         // (which is luckily handled identically as a name)
-        let name = match try!(self.parse_class_name()) {
-            // resolve some builtin constants at parse-time
-            Expr(Expr_::Path(path), span) => {
-                let mut ret_expr = None;
-                if path.namespace.is_none() {
-                    let constant = match &(path.identifier.borrow() as &str).to_lowercase()[..] {
-                        "true" => Some(Const::True),
-                        "false" => Some(Const::False),
-                        "null" => Some(Const::Null),
-                        _ => None,
-                    };
-                    ret_expr = constant.map(Expr_::Constant);
-                };
-                Expr(ret_expr.unwrap_or(Expr_::Path(path)), span)
-            },
-            expr => expr,
-        };
+        let name = try!(self.parse_class_name());
         if_lookahead!(self, Token::ScopeOp, _tok, {
             match self.parse_identifier_as_expr() {
                 Err(x) => return Err(x),
@@ -1333,13 +1317,8 @@ impl Parser {
                 // DNUMBER
                 Token::Double(x) => Expr_::Double(x),
                 // several magic constants
-                Token::MagicLine => Expr_::Constant(Const::MagicLine),
-                Token::MagicFile => Expr_::Constant(Const::MagicFile),
-                Token::MagicDir => Expr_::Constant(Const::MagicDir),
-                Token::MagicTrait => Expr_::Constant(Const::MagicTrait),
-                Token::MagicMethod => Expr_::Constant(Const::MagicMethod),
-                Token::MagicFunction => Expr_::Constant(Const::MagicFunction),
-                Token::MagicClass => Expr_::Constant(Const::MagicClass),
+                Token::MagicLine | Token::MagicFile | Token::MagicDir | Token::MagicTrait | Token::MagicMethod |
+                Token::MagicFunction | Token::MagicClass => Expr_::Path(Path::identifier(true, self.interner.intern(x.0.repr()))),
                 // '"' encaps_list '"'     { $$ = $2; }
                 Token::DoubleQuote => {
                     if_lookahead!(self, Token::DoubleQuote, token, {

@@ -1,8 +1,7 @@
 /// ! a pretty-ish printer
 use std::fmt::{self, Write};
 use std::borrow::Borrow;
-use tokens::Token;
-use ast::{Block, Const, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr,
+use ast::{Block, ClassModifiers, ClassModifier, Decl, FunctionDecl, Stmt, Stmt_, Expr,
           Expr_, IncludeTy, Op, Path, UnaryOp, Ty, NullableTy, TraitUse, UseClause};
 use ast::{Member, MemberModifiers, MemberModifier, Variable};
 
@@ -527,8 +526,7 @@ impl<W: Write> PrettyPrinter<W> {
                     try!(self.print_expression(v));
                 }
                 self.write("]")
-            }
-            Expr_::Constant(ref const_) => write!(self.target, "{}", const_),
+            },
             Expr_::Variable(ref varname) => self.print_variable(varname),
             Expr_::Reference(ref ref_expr) => {
                 try!(self.write("&"));
@@ -812,23 +810,5 @@ impl fmt::Display for NullableTy {
             NullableTy::NonNullable(ref ty) => ty,
         };
         write!(f, "{}", ty)
-    }
-}
-
-impl fmt::Display for Const {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            Const::Null => "null",
-            Const::True => "true",
-            Const::False => "false",
-            Const::MagicClass => Token::MagicClass.repr(),
-            Const::MagicTrait => Token::MagicTrait.repr(),
-            Const::MagicFunction => Token::MagicFunction.repr(),
-            Const::MagicMethod => Token::MagicMethod.repr(),
-            Const::MagicLine => Token::MagicLine.repr(),
-            Const::MagicFile => Token::MagicFile.repr(),
-            Const::MagicDir => Token::MagicDir.repr(),
-            Const::MagicNamespace => Token::MagicNamespace.repr(),
-        })
     }
 }

@@ -194,9 +194,8 @@ impl<T: Into<RcStr>> From<T> for Variable {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr_ {
     /// indicates the path to e.g. a namespace or is a simple identifier (e.g. a runtime-constant)
+    /// or a builtin (internal) constant like true, false, null or any magic-constant
     Path(Path),
-    /// a builtin (internal) constant like true, false, null or any magic-constant
-    Constant(Const),
     String(RcStr),
     BinaryString(Rc<Vec<u8>>),
     Int(i64),
@@ -285,24 +284,6 @@ pub enum Ty {
     Object(Option<Path>),
 }
 
-/// a builtin (internal) constant, which can be resolved at parse-time
-/// and is an essential part of the language (by design and not by declaration)
-/// null,true,false are not actual language-level constants, we still resolve them
-/// at parse-time since they are very-very common
-#[derive(Clone, Debug, PartialEq)]
-pub enum Const {
-    Null,
-    True,
-    False,
-    MagicClass,
-    MagicTrait,
-    MagicFunction,
-    MagicMethod,
-    MagicLine,
-    MagicFile,
-    MagicDir,
-    MagicNamespace,
-}
 /// A type and flag describing whether it's nullable
 #[derive(Clone, Debug, PartialEq)]
 pub enum NullableTy {
